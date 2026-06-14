@@ -113,3 +113,11 @@ def test_render_page_uses_three_pane_review_layout():
     assert "미리보기" in html
     assert "HTML" in html
     assert "JSON" in html
+
+
+def test_render_page_links_upload_button_to_file_input():
+    html = render_page(config=DemoConfig())
+
+    assert 'for="pdf-input"' in html
+    assert 'id="pdf-input"' in html
+    assert 'name="pdf"' in html

@@ -622,7 +622,7 @@ def render_page(
       padding: 0 12px;
       font-weight: 800;
     }}
-    .upload-button input[type="file"] {{
+    #pdf-input {{
       position: absolute;
       width: 1px;
       height: 1px;
@@ -989,10 +989,8 @@ def render_page(
     {error_section}
     {notice_section}
     <form id="upload-form" class="upload-bar" action="/api/jobs" method="post" enctype="multipart/form-data">
-      <label class="upload-button">
-        업로드
-        <input name="pdf" type="file" accept="application/pdf,.pdf" required>
-      </label>
+      <label class="upload-button" for="pdf-input">업로드</label>
+      <input id="pdf-input" name="pdf" type="file" accept="application/pdf,.pdf" required>
       <div class="options">
         <label>
           Render DPI
