@@ -890,7 +890,7 @@ def render_page(
     .pdf-canvas {{
       min-height: 0;
       overflow: auto;
-      padding: 14px 30px 20px;
+      padding: 10px 12px 16px;
       display: grid;
       place-items: start center;
     }}
@@ -907,7 +907,7 @@ def render_page(
       font-weight: 700;
     }}
     .pdf-shell {{
-      width: min(760px, 92%);
+      width: min(840px, calc(100% - 8px));
       height: calc(100vh - 170px);
       min-height: 560px;
       background: #fff;

@@ -152,6 +152,13 @@ def test_render_page_keeps_pdf_iframe_stable_during_polling():
     assert "renderPdfPreview(job);" in html
 
 
+def test_render_page_uses_wide_pdf_preview_spacing():
+    html = render_page(config=DemoConfig())
+
+    assert "padding: 10px 12px 16px;" in html
+    assert "width: min(840px, calc(100% - 8px));" in html
+
+
 def test_api_index_payload_lists_job_endpoints():
     payload = api_index_payload()
 
