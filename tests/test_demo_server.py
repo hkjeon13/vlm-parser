@@ -143,6 +143,15 @@ def test_render_page_links_upload_button_to_file_input():
     assert "fileInput.addEventListener('change', async" in html
 
 
+def test_render_page_keeps_pdf_iframe_stable_during_polling():
+    html = render_page(config=DemoConfig())
+
+    assert "let renderedPdfJobId = null;" in html
+    assert "function renderPdfPreview(job) {" in html
+    assert "if (renderedPdfJobId === job.id) {" in html
+    assert "renderPdfPreview(job);" in html
+
+
 def test_api_index_payload_lists_job_endpoints():
     payload = api_index_payload()
 

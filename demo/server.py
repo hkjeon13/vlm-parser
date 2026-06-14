@@ -1152,6 +1152,7 @@ def render_page(
     let selectedJob = null;
     let selectedMarkdown = '';
     let selectedJson = null;
+    let renderedPdfJobId = null;
     let activeTab = 'preview';
 
     function escapeHtml(value) {{
@@ -1166,6 +1167,18 @@ def render_page(
 
     function statusLabel(job) {{
       return `<span class="badge ${{escapeHtml(job.status)}}">${{escapeHtml(job.status)}}</span>`;
+    }}
+
+    function renderPdfPreview(job) {{
+      if (renderedPdfJobId === job.id) {{
+        return;
+      }}
+      renderedPdfJobId = job.id;
+      pdfCanvas.innerHTML = `
+        <div class="pdf-shell">
+          <iframe class="pdf-frame" src="${{job.links.source_pdf}}" title="PDF preview"></iframe>
+        </div>
+      `;
     }}
 
     async function refreshJobs() {{
@@ -1199,11 +1212,7 @@ def render_page(
       selectedTitle.textContent = job.filename;
       jobIdLabel.textContent = job.id;
       downloadLinks.innerHTML = '';
-      pdfCanvas.innerHTML = `
-        <div class="pdf-shell">
-          <iframe class="pdf-frame" src="${{job.links.source_pdf}}" title="PDF preview"></iframe>
-        </div>
-      `;
+      renderPdfPreview(job);
       if (job.status === 'failed') {{
         previewBody.className = 'result-body';
         previewBody.innerHTML = `<div class="error">${{escapeHtml(job.error || 'Parsing failed.')}}</div>`;
