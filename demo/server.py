@@ -1106,12 +1106,51 @@ def render_page(
       text-transform: uppercase;
     }}
     @media (max-width: 780px) {{
-      header, form, .panes, .workspace, .review-grid {{ grid-template-columns: 1fr; }}
+      header, form, .panes, .review-grid {{ grid-template-columns: 1fr; }}
       header {{ display: grid; }}
       .status {{ min-width: 0; }}
       body {{ overflow: auto; }}
-      .app-shell {{ min-width: 0; height: auto; }}
-      .pdf-shell {{ width: 100%; height: 560px; }}
+      .app-shell {{ min-width: 0; min-height: 100vh; height: auto; overflow: visible; display: block; }}
+      .topbar {{
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas: "title step" "upload upload";
+        gap: 10px;
+        min-height: 0;
+        padding: 10px 12px;
+      }}
+      .topbar > div:first-child {{ grid-area: title; min-width: 0; }}
+      .parse-step {{ position: static; transform: none; grid-area: step; justify-self: end; }}
+      .upload-bar {{ position: static; grid-area: upload; width: 100%; flex-wrap: wrap; }}
+      .selected-file-name {{ flex: 1 1 130px; max-width: none; }}
+      .upload-bar .options {{ flex: 1 0 100%; justify-content: space-between; }}
+      .upload-bar .options label.check:nth-of-type(4) {{ flex: 1 1 auto; min-width: 0; white-space: normal; }}
+      .upload-bar button[type="submit"] {{ flex: 0 0 auto; }}
+      .workspace {{ display: flex; flex-direction: column; height: auto; }}
+      .left-rail {{ max-height: 220px; border-width: 0 0 1px 0; }}
+      .jobs header {{ padding: 10px 12px; }}
+      .job-list {{ height: auto; max-height: 164px; }}
+      .pdf-stage {{ min-height: 520px; grid-template-rows: minmax(0, 472px) 48px; border-right: 0; border-bottom: 1px solid var(--line); }}
+      .pdf-canvas {{ padding: 8px; }}
+      .pdf-shell {{ width: 100%; height: min(62vh, 520px); min-height: 420px; }}
+      .pdf-controls {{ grid-template-columns: 58px minmax(0, 1fr) 64px; gap: 10px; padding: 8px 10px; }}
+      .page-chip {{ font-size: 12px; }}
+      .result-panel {{ min-height: 560px; }}
+      .preview-toolbar {{ padding: 14px 12px 10px; }}
+      .result-tabs {{ overflow-x: auto; flex-wrap: nowrap; padding: 0 12px; }}
+      .result-tabs button {{ min-width: 84px; flex: 0 0 auto; }}
+      .tab-download-links {{ margin-left: 8px; flex: 0 0 auto; }}
+      .result-body {{ min-height: 420px; padding: 12px; }}
+      pre {{ min-height: 260px; max-height: none; font-size: 12px; }}
+      .result-footer {{ justify-content: flex-start; overflow-wrap: anywhere; }}
+    }}
+    @media (max-width: 430px) {{
+      h1 {{ font-size: 15px; }}
+      .parse-step {{ padding-right: 10px; }}
+      .upload-button, .upload-bar button[type="submit"] {{ padding: 0 10px; }}
+      .tab-download-links a {{ padding: 4px 7px; }}
     }}
   </style>
 </head>

@@ -158,6 +158,19 @@ def test_render_page_places_download_actions_in_tab_bar():
     assert "job.links.json" in html
 
 
+def test_render_page_includes_mobile_friendly_layout_rules():
+    html = render_page(config=DemoConfig())
+
+    assert "@media (max-width: 780px)" in html
+    assert ".app-shell { min-width: 0; min-height: 100vh; height: auto; overflow: visible; display: block; }" in html
+    assert ".topbar {" in html
+    assert "grid-template-areas: \"title step\" \"upload upload\";" in html
+    assert ".upload-bar { position: static; grid-area: upload; width: 100%; flex-wrap: wrap; }" in html
+    assert ".workspace { display: flex; flex-direction: column; height: auto; }" in html
+    assert ".left-rail { max-height: 220px; border-width: 0 0 1px 0; }" in html
+    assert ".result-tabs { overflow-x: auto; flex-wrap: nowrap; padding: 0 12px; }" in html
+
+
 def test_render_page_keeps_pdf_iframe_stable_during_polling():
     html = render_page(config=DemoConfig())
 
