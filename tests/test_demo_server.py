@@ -124,6 +124,8 @@ def test_render_page_links_upload_button_to_file_input():
     assert 'name="pdf"' in html
     assert 'id="selected-file-name"' in html
     assert "fileInput.click()" in html
+    assert "submitUpload()" in html
+    assert "fileInput.addEventListener('change', async" in html
 
 
 def test_api_index_payload_lists_job_endpoints():

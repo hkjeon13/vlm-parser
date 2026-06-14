@@ -1183,8 +1183,7 @@ def render_page(
       `;
     }}
 
-    form.addEventListener('submit', async (event) => {{
-      event.preventDefault();
+    async function submitUpload() {{
       const button = form.querySelector('button[type="submit"]');
       if (!fileInput.files.length) {{
         previewBody.className = 'result-body';
@@ -1217,16 +1216,24 @@ def render_page(
         button.disabled = false;
         button.textContent = '실행';
       }}
+    }}
+
+    form.addEventListener('submit', async (event) => {{
+      event.preventDefault();
+      await submitUpload();
     }});
 
     uploadTrigger.addEventListener('click', () => {{
       fileInput.click();
     }});
 
-    fileInput.addEventListener('change', () => {{
+    fileInput.addEventListener('change', async () => {{
       selectedFileName.textContent = fileInput.files.length
         ? fileInput.files[0].name
         : '선택된 파일 없음';
+      if (fileInput.files.length) {{
+        await submitUpload();
+      }}
     }});
 
     jobList.addEventListener('click', async (event) => {{
