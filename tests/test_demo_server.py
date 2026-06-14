@@ -159,6 +159,16 @@ def test_render_page_uses_wide_pdf_preview_spacing():
     assert "width: min(840px, calc(100% - 8px));" in html
 
 
+def test_render_page_opens_pdf_preview_in_full_width_mode():
+    html = render_page(config=DemoConfig())
+
+    assert "function pdfPreviewUrl(job) {" in html
+    assert "view=FitH" in html
+    assert "zoom=page-width" in html
+    assert "navpanes=0" in html
+    assert 'src="${pdfPreviewUrl(job)}"' in html
+
+
 def test_api_index_payload_lists_job_endpoints():
     payload = api_index_payload()
 

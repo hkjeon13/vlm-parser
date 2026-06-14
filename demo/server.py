@@ -1169,6 +1169,10 @@ def render_page(
       return `<span class="badge ${{escapeHtml(job.status)}}">${{escapeHtml(job.status)}}</span>`;
     }}
 
+    function pdfPreviewUrl(job) {{
+      return `${{job.links.source_pdf}}#view=FitH&zoom=page-width&navpanes=0`;
+    }}
+
     function renderPdfPreview(job) {{
       if (renderedPdfJobId === job.id) {{
         return;
@@ -1176,7 +1180,7 @@ def render_page(
       renderedPdfJobId = job.id;
       pdfCanvas.innerHTML = `
         <div class="pdf-shell">
-          <iframe class="pdf-frame" src="${{job.links.source_pdf}}" title="PDF preview"></iframe>
+          <iframe class="pdf-frame" src="${{pdfPreviewUrl(job)}}" title="PDF preview"></iframe>
         </div>
       `;
     }}
