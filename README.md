@@ -157,6 +157,7 @@ python3 demo/server.py --host 0.0.0.0 --port 7860
 ```
 
 브라우저에서 `http://localhost:7860`으로 접속한 뒤 PDF를 업로드하면 Markdown과 JSON 결과를 함께 확인할 수 있습니다.
+파싱은 비동기 job으로 실행되며, 화면에서 job 목록과 상태를 확인하고 완료 후 JSON 또는 Markdown을 다운로드할 수 있습니다.
 
 VLM rewriting을 테스트하려면 저장소 루트의 `.env`에 다음 값을 설정하고 데모에서 `Use VLM rewrite`를 켜면 됩니다.
 
@@ -167,6 +168,21 @@ MODEL_BASE_URL=https://openrouter.ai/api/v1/chat/completions
 ```
 
 `MODEL_BASE_URL`은 OpenAI-compatible chat completions endpoint 전체 URL을 넣어도 데모 서버가 client base URL로 정규화합니다.
+
+데모 서버는 같은 기능을 API로도 제공합니다.
+
+```bash
+curl -F "pdf=@sample.pdf" \
+  -F "render_dpi=180" \
+  -F "trim=on" \
+  -F "auto_slice=on" \
+  http://localhost:7860/api/jobs
+
+curl http://localhost:7860/api/jobs
+curl http://localhost:7860/api/jobs/<job_id>
+curl -o result.json http://localhost:7860/api/jobs/<job_id>/result.json
+curl -o result.md http://localhost:7860/api/jobs/<job_id>/result.md
+```
 
 ## 개발 환경
 
