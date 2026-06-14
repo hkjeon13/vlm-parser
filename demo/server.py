@@ -1216,8 +1216,8 @@ def render_page(
       return pages.map((page, index) => {{
         const pageNumber = page.page_number ?? page.unit_number ?? index + 1;
         const markdown = page.markdown || page.static?.text || '';
-        return `## Page ${{pageNumber}}\n\n${{markdown}}`.trim();
-      }}).join('\n\n---\n\n');
+        return `## Page ${{pageNumber}}\\n\\n${{markdown}}`.trim();
+      }}).join('\\n\\n---\\n\\n');
     }}
 
     async function refreshJobs() {{

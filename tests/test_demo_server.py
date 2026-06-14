@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 
 from demo.server import (
     DemoConfig,
@@ -178,6 +179,16 @@ def test_render_page_displays_results_by_page():
     assert "selectedJson.pages" in html
     assert "page.page_number" in html
     assert "Page ${escapeHtml(pageNumber)}" in html
+
+
+def test_render_page_embeds_valid_javascript(tmp_path: Path):
+    html = render_page(config=DemoConfig())
+    script_start = html.index("<script>") + len("<script>")
+    script_end = html.index("</script>", script_start)
+    script_path = tmp_path / "demo-page.js"
+    script_path.write_text(html[script_start:script_end], encoding="utf-8")
+
+    subprocess.run(["node", "--check", str(script_path)], check=True)
 
 
 def test_source_pdf_link_uses_original_filename_for_pdf_viewer_title():
