@@ -9,6 +9,7 @@ from demo.server import (
     load_demo_config,
     normalize_model_base_url,
     process_job,
+    render_page,
 )
 
 
@@ -100,3 +101,15 @@ def test_process_job_stores_json_and_markdown_results(tmp_path: Path):
     assert completed.status == "done"
     assert completed.result_json == {"document": {"markdown": "# Parsed"}}
     assert completed.markdown == "# Parsed"
+
+
+def test_render_page_uses_three_pane_review_layout():
+    html = render_page(config=DemoConfig(model="qwen/qwen3.7-plus"))
+
+    assert 'class="app-shell"' in html
+    assert "left-rail" in html
+    assert 'class="pdf-stage"' in html
+    assert "result-panel" in html
+    assert "미리보기" in html
+    assert "HTML" in html
+    assert "JSON" in html

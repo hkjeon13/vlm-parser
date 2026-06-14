@@ -513,16 +513,58 @@ def render_page(
       --error: #b42318;
     }}
     * {{ box-sizing: border-box; }}
+    html, body {{ height: 100%; }}
     body {{
       margin: 0;
       background: var(--bg);
       color: var(--ink);
       font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overflow: hidden;
     }}
-    main {{
-      width: min(1180px, calc(100vw - 32px));
-      margin: 0 auto;
-      padding: 28px 0 40px;
+    .app-shell {{
+      position: relative;
+      display: grid;
+      grid-template-rows: 60px minmax(0, 1fr);
+      height: 100vh;
+      min-width: 1080px;
+      overflow: hidden;
+    }}
+    .topbar {{
+      align-items: center;
+      margin: 0;
+      padding: 0 24px;
+      border-bottom: 1px solid var(--line);
+      background: #f8fafc;
+    }}
+    .topbar .status {{
+      display: none;
+    }}
+    .parse-step {{
+      position: absolute;
+      left: 50%;
+      top: 13px;
+      transform: translateX(-50%);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      border: 2px solid var(--accent);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--accent-strong);
+      padding: 4px 12px 4px 6px;
+      font-weight: 800;
+      box-shadow: 0 0 0 4px rgba(91, 92, 246, 0.12);
+    }}
+    .parse-step span {{
+      display: grid;
+      place-items: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      font-size: 12px;
     }}
     header {{
       display: flex;
@@ -532,7 +574,7 @@ def render_page(
       margin-bottom: 20px;
     }}
     h1, h2 {{ margin: 0; letter-spacing: 0; }}
-    h1 {{ font-size: clamp(28px, 4vw, 44px); line-height: 1.05; }}
+    h1 {{ font-size: 16px; line-height: 1.05; }}
     h2 {{ font-size: 16px; }}
     .status {{
       border: 1px solid var(--line);
@@ -552,6 +594,71 @@ def render_page(
       border-radius: 8px;
       padding: 16px;
       margin-bottom: 16px;
+    }}
+    .upload-bar {{
+      position: absolute;
+      top: 10px;
+      right: 24px;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      grid-template-columns: none;
+      margin: 0;
+      border: 0;
+      border-radius: 0;
+      padding: 0;
+      background: transparent;
+      gap: 8px;
+    }}
+    .upload-button {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 34px;
+      border: 2px solid var(--accent);
+      border-radius: 7px;
+      background: #fff;
+      color: var(--accent);
+      padding: 0 12px;
+      font-weight: 800;
+    }}
+    .upload-button input[type="file"] {{
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }}
+    .upload-bar .options {{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }}
+    .upload-bar .options > label:first-child {{
+      display: none;
+    }}
+    .upload-bar .field-options {{
+      display: none;
+    }}
+    .upload-bar .check {{
+      display: none;
+    }}
+    .upload-bar .options label.check:nth-of-type(4) {{
+      display: flex;
+      min-height: 34px;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+      white-space: nowrap;
+    }}
+    .upload-bar button[type="submit"] {{
+      min-height: 34px;
+      border-radius: 7px;
+      background: var(--accent);
+      color: #fff;
+      padding: 0 14px;
     }}
     label {{ display: grid; gap: 7px; font-weight: 650; }}
     input[type="file"], input[type="number"] {{
@@ -608,15 +715,23 @@ def render_page(
     }}
     .workspace {{
       display: grid;
-      grid-template-columns: 340px minmax(0, 1fr);
-      gap: 16px;
-      align-items: start;
+      grid-template-columns: 304px minmax(420px, 1fr) minmax(520px, 42vw);
+      gap: 0;
+      align-items: stretch;
+      min-height: 0;
+      height: 100%;
     }}
     .jobs {{
       border: 1px solid var(--line);
       border-radius: 8px;
       background: var(--panel);
       overflow: hidden;
+    }}
+    .left-rail {{
+      border-width: 0 1px 0 0;
+      border-radius: 0;
+      background: #f8fafc;
+      min-height: 0;
     }}
     .jobs header {{
       display: flex;
@@ -628,22 +743,26 @@ def render_page(
     }}
     .job-list {{
       display: grid;
-      max-height: 560px;
+      align-content: start;
+      max-height: none;
+      height: 100%;
       overflow: auto;
+      padding: 12px;
+      gap: 8px;
     }}
     .job-row {{
       display: grid;
       gap: 4px;
-      border: 0;
-      border-bottom: 1px solid var(--line);
-      border-radius: 0;
-      background: #fff;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: transparent;
       color: var(--ink);
       text-align: left;
       min-height: 0;
       padding: 11px 14px;
     }}
-    .job-row:hover, .job-row.active {{ background: #f1f7f5; }}
+    .job-row:hover {{ background: #fff; }}
+    .job-row.active {{ background: #eef2ff; border-color: #8b8cff; box-shadow: inset 3px 0 0 #5b5cf6; }}
     .job-row strong {{
       display: block;
       overflow-wrap: anywhere;
@@ -666,10 +785,69 @@ def render_page(
     .badge.done {{ color: #0f6b3d; background: #eef9f1; border-color: #b8dfc2; }}
     .badge.failed {{ color: var(--error); background: #fff5f3; border-color: #f1a29b; }}
     .badge.running, .badge.queued {{ color: #73510a; background: #fff8e8; border-color: #edd28a; }}
+    .pdf-stage {{
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) 48px;
+      background: #cfd7e3;
+      border-right: 1px solid var(--line);
+    }}
+    .pdf-canvas {{
+      min-height: 0;
+      overflow: auto;
+      padding: 14px 30px 20px;
+      display: grid;
+      place-items: start center;
+    }}
+    .pdf-empty {{
+      align-self: center;
+      justify-self: center;
+      width: min(520px, 80%);
+      border: 1px dashed #9aa8ba;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.75);
+      color: var(--muted);
+      padding: 28px;
+      text-align: center;
+      font-weight: 700;
+    }}
+    .pdf-shell {{
+      width: min(760px, 92%);
+      height: calc(100vh - 170px);
+      min-height: 560px;
+      background: #fff;
+      box-shadow: 0 1px 2px rgba(15,23,42,0.16);
+    }}
+    .pdf-controls {{
+      display: grid;
+      grid-template-columns: 92px minmax(0, 1fr) 120px;
+      align-items: center;
+      gap: 16px;
+      padding: 8px 18px;
+      background: #e8edf4;
+      border-top: 1px solid #c6d0df;
+    }}
+    .zoom-track {{
+      height: 8px;
+      border-radius: 99px;
+      background: linear-gradient(90deg, #111827 0 52%, #b7c1cf 52% 100%);
+    }}
+    .page-chip {{
+      justify-self: end;
+      color: #475569;
+      font-weight: 700;
+    }}
     .preview {{
       min-width: 0;
       display: grid;
       gap: 12px;
+    }}
+    .result-panel {{
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      gap: 0;
+      min-height: 0;
+      background: #fff;
     }}
     .preview-toolbar {{
       display: flex;
@@ -678,6 +856,40 @@ def render_page(
       justify-content: space-between;
       gap: 10px;
       color: var(--muted);
+      padding: 20px 18px 12px;
+    }}
+    .result-tabs {{
+      display: flex;
+      padding: 0 18px;
+      border-bottom: 1px solid var(--line);
+    }}
+    .result-tabs button {{
+      min-width: 96px;
+      min-height: 38px;
+      border: 1px solid transparent;
+      border-bottom: 0;
+      border-radius: 8px 8px 0 0;
+      background: #f8fafc;
+      color: #475569;
+      font-weight: 750;
+    }}
+    .result-tabs button.active {{
+      background: #fff;
+      border-color: var(--line);
+      color: var(--ink);
+      transform: translateY(1px);
+    }}
+    .result-body {{
+      min-height: 0;
+      overflow: auto;
+      padding: 18px;
+    }}
+    .result-footer {{
+      display: flex;
+      justify-content: flex-end;
+      padding: 8px 18px 12px;
+      color: var(--muted);
+      font-size: 12px;
     }}
     .download-links {{
       display: flex;
@@ -703,9 +915,10 @@ def render_page(
     }}
     .pdf-frame {{
       width: 100%;
-      min-height: 70vh;
+      height: 100%;
+      min-height: 0;
       border: 0;
-      background: #f0f0ee;
+      background: #fff;
     }}
     .empty-state {{
       border: 1px dashed var(--line);
@@ -755,15 +968,19 @@ def render_page(
       header, form, .panes, .workspace, .review-grid {{ grid-template-columns: 1fr; }}
       header {{ display: grid; }}
       .status {{ min-width: 0; }}
+      body {{ overflow: auto; }}
+      .app-shell {{ min-width: 0; height: auto; }}
+      .pdf-shell {{ width: 100%; height: 560px; }}
     }}
   </style>
 </head>
 <body>
-  <main>
-    <header>
+  <main class="app-shell">
+    <header class="topbar">
       <div>
         <h1>vlm-parser demo</h1>
       </div>
+      <div class="parse-step"><span>1</span> Parse</div>
       <div class="status">
         <strong>{model_label}</strong>
         <span>VLM config: {vlm_status}</span>
@@ -771,9 +988,9 @@ def render_page(
     </header>
     {error_section}
     {notice_section}
-    <form id="upload-form" action="/api/jobs" method="post" enctype="multipart/form-data">
-      <label>
-        PDF
+    <form id="upload-form" class="upload-bar" action="/api/jobs" method="post" enctype="multipart/form-data">
+      <label class="upload-button">
+        업로드
         <input name="pdf" type="file" accept="application/pdf,.pdf" required>
       </label>
       <div class="options">
@@ -784,11 +1001,11 @@ def render_page(
         <label class="check"><input name="trim" type="checkbox" checked> Trim margins</label>
         <label class="check"><input name="auto_slice" type="checkbox" checked> Auto slice pages</label>
         <label class="check"><input name="use_vlm" type="checkbox"> Use VLM rewrite</label>
-        <button type="submit">Parse PDF</button>
+        <button type="submit">실행</button>
       </div>
     </form>
     <section class="workspace">
-      <aside class="jobs">
+      <aside class="jobs left-rail">
         <header>
           <h2>Jobs</h2>
           <span id="job-count" class="badge">0</span>
@@ -797,12 +1014,30 @@ def render_page(
           <div class="empty-state">No jobs yet.</div>
         </div>
       </aside>
-      <section class="preview">
+      <section class="pdf-stage">
+        <div id="pdf-canvas" class="pdf-canvas">
+          <div class="pdf-empty">PDF를 업로드하면 이 영역에서 원문을 확인할 수 있습니다.</div>
+        </div>
+        <div class="pdf-controls">
+          <button class="ghost-button" type="button">↻</button>
+          <div class="zoom-track" aria-hidden="true"></div>
+          <span class="page-chip"><strong>1</strong> / <span id="page-total">-</span>⌄</span>
+        </div>
+      </section>
+      <section class="preview result-panel">
         <div class="preview-toolbar">
           <strong id="selected-title">Select a completed job</strong>
           <div id="download-links" class="download-links"></div>
         </div>
-        <div id="preview-body" class="empty-state">Upload a PDF to start parsing asynchronously.</div>
+        <div class="result-tabs" role="tablist">
+          <button id="tab-preview" class="active" type="button" data-tab="preview">미리보기</button>
+          <button id="tab-html" type="button" data-tab="html">HTML</button>
+          <button id="tab-json" type="button" data-tab="json">JSON</button>
+        </div>
+        <div id="preview-body" class="result-body">
+          <div class="empty-state">Upload a PDF to start parsing asynchronously.</div>
+        </div>
+        <div class="result-footer">Job ID: <span id="job-id-label">-</span></div>
       </section>
     </section>
     {result_section}
@@ -814,7 +1049,14 @@ def render_page(
     const selectedTitle = document.getElementById('selected-title');
     const downloadLinks = document.getElementById('download-links');
     const previewBody = document.getElementById('preview-body');
+    const pdfCanvas = document.getElementById('pdf-canvas');
+    const jobIdLabel = document.getElementById('job-id-label');
+    const tabButtons = Array.from(document.querySelectorAll('[data-tab]'));
     let selectedJobId = null;
+    let selectedJob = null;
+    let selectedMarkdown = '';
+    let selectedJson = null;
+    let activeTab = 'preview';
 
     function escapeHtml(value) {{
       return String(value ?? '').replace(/[&<>"']/g, (char) => ({{
@@ -857,34 +1099,57 @@ def render_page(
     }}
 
     async function renderJob(job) {{
+      selectedJob = job;
       selectedTitle.textContent = job.filename;
+      jobIdLabel.textContent = job.id;
       downloadLinks.innerHTML = '';
+      pdfCanvas.innerHTML = `
+        <div class="pdf-shell">
+          <iframe class="pdf-frame" src="${{job.links.source_pdf}}" title="PDF preview"></iframe>
+        </div>
+      `;
       if (job.status === 'failed') {{
-        previewBody.className = 'error';
-        previewBody.textContent = job.error || 'Parsing failed.';
+        previewBody.className = 'result-body';
+        previewBody.innerHTML = `<div class="error">${{escapeHtml(job.error || 'Parsing failed.')}}</div>`;
         return;
       }}
       if (job.status !== 'done') {{
-        previewBody.className = 'empty-state';
-        previewBody.textContent = `Status: ${{job.status}}`;
+        previewBody.className = 'result-body';
+        previewBody.innerHTML = `<div class="empty-state">Status: ${{escapeHtml(job.status)}}</div>`;
         return;
       }}
       downloadLinks.innerHTML = `
-        <a href="${{job.links.json}}">JSON</a>
-        <a href="${{job.links.markdown}}">Markdown</a>
+        <a href="${{job.links.markdown}}" title="Markdown 다운로드">MD</a>
+        <a href="${{job.links.json}}" title="JSON 다운로드">JSON</a>
       `;
       const markdownResponse = await fetch(job.links.markdown);
-      const markdown = await markdownResponse.text();
-      previewBody.className = 'review-grid';
+      selectedMarkdown = await markdownResponse.text();
+      const jsonResponse = await fetch(job.links.json);
+      selectedJson = await jsonResponse.json();
+      renderResultTab();
+    }}
+
+    function renderResultTab() {{
+      tabButtons.forEach((button) => {{
+        button.classList.toggle('active', button.dataset.tab === activeTab);
+      }});
+      previewBody.className = 'result-body';
+      if (!selectedJob || selectedJob.status !== 'done') {{
+        return;
+      }}
+      if (activeTab === 'json') {{
+        previewBody.innerHTML = `<pre>${{escapeHtml(JSON.stringify(selectedJson, null, 2))}}</pre>`;
+        return;
+      }}
+      if (activeTab === 'html') {{
+        previewBody.innerHTML = `<pre>${{escapeHtml(selectedMarkdown)}}</pre>`;
+        return;
+      }}
       previewBody.innerHTML = `
-        <article>
-          <h2>PDF</h2>
-          <iframe class="pdf-frame" src="${{job.links.source_pdf}}" title="PDF preview"></iframe>
-        </article>
-        <article>
-          <h2>Markdown</h2>
-          <pre>${{escapeHtml(markdown)}}</pre>
-        </article>
+        <div class="result-meta">
+          <span>페이지 1</span>
+        </div>
+        <pre>${{escapeHtml(selectedMarkdown)}}</pre>
       `;
     }}
 
@@ -906,13 +1171,14 @@ def render_page(
         form.reset();
         form.querySelector('input[name="trim"]').checked = true;
         form.querySelector('input[name="auto_slice"]').checked = true;
+        pdfCanvas.innerHTML = '<div class="pdf-empty">업로드한 PDF를 처리 중입니다.</div>';
         await refreshJobs();
       }} catch (error) {{
-        previewBody.className = 'error';
-        previewBody.textContent = error.message;
+        previewBody.className = 'result-body';
+        previewBody.innerHTML = `<div class="error">${{escapeHtml(error.message)}}</div>`;
       }} finally {{
         button.disabled = false;
-        button.textContent = 'Parse PDF';
+        button.textContent = '실행';
       }}
     }});
 
@@ -923,6 +1189,13 @@ def render_page(
       }}
       selectedJobId = row.dataset.jobId;
       await refreshJobs();
+    }});
+
+    tabButtons.forEach((button) => {{
+      button.addEventListener('click', () => {{
+        activeTab = button.dataset.tab;
+        renderResultTab();
+      }});
     }});
 
     refreshJobs();
