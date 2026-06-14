@@ -171,6 +171,15 @@ def test_render_page_opens_pdf_preview_in_full_width_mode():
     assert 'src="${pdfPreviewUrl(job)}"' in html
 
 
+def test_render_page_displays_results_by_page():
+    html = render_page(config=DemoConfig())
+
+    assert "function pageSeparatedMarkdown()" in html
+    assert "selectedJson.pages" in html
+    assert "page.page_number" in html
+    assert "Page ${escapeHtml(pageNumber)}" in html
+
+
 def test_source_pdf_link_uses_original_filename_for_pdf_viewer_title():
     link = source_pdf_link("job123", "2026년_그룹_정보보호_수준진단.pdf")
 

@@ -1067,6 +1067,20 @@ def render_page(
       overflow-wrap: anywhere;
       font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }}
+    .page-result {{
+      display: grid;
+      gap: 10px;
+      padding: 14px 0 18px;
+      border-top: 1px solid var(--line);
+    }}
+    .page-result:first-of-type {{ border-top: 0; padding-top: 0; }}
+    .page-result h3 {{
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }}
     @media (max-width: 780px) {{
       header, form, .panes, .workspace, .review-grid {{ grid-template-columns: 1fr; }}
       header {{ display: grid; }}
@@ -1194,6 +1208,18 @@ def render_page(
       `;
     }}
 
+    function pageSeparatedMarkdown() {{
+      const pages = Array.isArray(selectedJson?.pages) ? selectedJson.pages : [];
+      if (!pages.length) {{
+        return selectedMarkdown;
+      }}
+      return pages.map((page, index) => {{
+        const pageNumber = page.page_number ?? page.unit_number ?? index + 1;
+        const markdown = page.markdown || page.static?.text || '';
+        return `## Page ${{pageNumber}}\n\n${{markdown}}`.trim();
+      }}).join('\n\n---\n\n');
+    }}
+
     async function refreshJobs() {{
       const response = await fetch('/api/jobs');
       const data = await response.json();
@@ -1265,14 +1291,23 @@ def render_page(
         return;
       }}
       if (activeTab === 'html') {{
-        previewBody.innerHTML = `<pre>${{escapeHtml(selectedMarkdown)}}</pre>`;
+        previewBody.innerHTML = `<pre>${{escapeHtml(pageSeparatedMarkdown())}}</pre>`;
         return;
       }}
       previewBody.innerHTML = `
         <div class="result-meta">
-          <span>페이지 1</span>
+          <span>${{escapeHtml(selectedJson?.pages?.length || 0)}} pages</span>
         </div>
-        <pre>${{escapeHtml(selectedMarkdown)}}</pre>
+        ${{(selectedJson?.pages || []).map((page, index) => {{
+          const pageNumber = page.page_number ?? page.unit_number ?? index + 1;
+          const markdown = page.markdown || page.static?.text || '';
+          return `
+            <section class="page-result">
+              <h3>Page ${{escapeHtml(pageNumber)}}</h3>
+              <pre>${{escapeHtml(markdown)}}</pre>
+            </section>
+          `;
+        }}).join('') || `<pre>${{escapeHtml(selectedMarkdown)}}</pre>`}}
       `;
     }}
 
