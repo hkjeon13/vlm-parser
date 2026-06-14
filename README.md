@@ -148,6 +148,26 @@ json_data = result.to_json()
 markdown_text = result.to_markdown()
 ```
 
+## 데모 페이지
+
+저장소에는 업로드한 PDF를 바로 테스트할 수 있는 간단한 웹 데모가 포함되어 있습니다.
+
+```bash
+python3 demo/server.py --host 0.0.0.0 --port 7860
+```
+
+브라우저에서 `http://localhost:7860`으로 접속한 뒤 PDF를 업로드하면 Markdown과 JSON 결과를 함께 확인할 수 있습니다.
+
+VLM rewriting을 테스트하려면 저장소 루트의 `.env`에 다음 값을 설정하고 데모에서 `Use VLM rewrite`를 켜면 됩니다.
+
+```bash
+MODEL_API_KEY=<API_KEY>
+MODEL_NAME=qwen/qwen3.7-plus
+MODEL_BASE_URL=https://openrouter.ai/api/v1/chat/completions
+```
+
+`MODEL_BASE_URL`은 OpenAI-compatible chat completions endpoint 전체 URL을 넣어도 데모 서버가 client base URL로 정규화합니다.
+
 ## 개발 환경
 
 저장소를 직접 clone해서 개발할 때:
