@@ -8,6 +8,7 @@ from demo.server import (
     api_index_payload,
     build_vlm_client,
     content_disposition_header,
+    source_pdf_link,
     load_demo_config,
     normalize_model_base_url,
     process_job,
@@ -63,6 +64,7 @@ def test_job_store_creates_uploaded_job_with_uploaded_pdf(tmp_path: Path):
     assert store.get(job.id) == job
     assert store.list()[0].id == job.id
     assert store.to_summary(job)["status"] == "uploaded"
+    assert store.to_summary(job)["links"]["source_pdf"].endswith("/sample.pdf")
 
 
 def test_job_store_can_mark_uploaded_job_queued(tmp_path: Path):
@@ -167,6 +169,17 @@ def test_render_page_opens_pdf_preview_in_full_width_mode():
     assert "zoom=page-width" in html
     assert "navpanes=0" in html
     assert 'src="${pdfPreviewUrl(job)}"' in html
+
+
+def test_source_pdf_link_uses_original_filename_for_pdf_viewer_title():
+    link = source_pdf_link("job123", "2026년_그룹_정보보호_수준진단.pdf")
+
+    assert link == (
+        "/api/jobs/job123/source/"
+        "2026%EB%85%84_%EA%B7%B8%EB%A3%B9_"
+        "%EC%A0%95%EB%B3%B4%EB%B3%B4%ED%98%B8_"
+        "%EC%88%98%EC%A4%80%EC%A7%84%EB%8B%A8.pdf"
+    )
 
 
 def test_api_index_payload_lists_job_endpoints():

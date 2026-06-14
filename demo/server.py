@@ -158,7 +158,7 @@ class JobStore:
             "links": {
                 "self": f"/api/jobs/{job.id}",
                 "parse": f"/api/jobs/{job.id}/parse",
-                "source_pdf": f"/api/jobs/{job.id}/source.pdf",
+                "source_pdf": source_pdf_link(job.id, job.filename),
                 "json": f"/api/jobs/{job.id}/result.json",
                 "markdown": f"/api/jobs/{job.id}/result.md",
             },
@@ -290,6 +290,13 @@ def content_disposition_header(disposition: str, filename: str) -> str:
     ascii_name = f"download{suffix}"
     encoded_name = quote(Path(filename).name, safe="")
     return f'{disposition}; filename="{ascii_name}"; filename*=UTF-8\'\'{encoded_name}'
+
+
+def source_pdf_link(job_id: str, filename: str) -> str:
+    display_name = Path(filename).name or "uploaded.pdf"
+    if not Path(display_name).suffix:
+        display_name = f"{display_name}.pdf"
+    return f"/api/jobs/{job_id}/source/{quote(display_name, safe='')}"
 
 
 class DemoHandler(BaseHTTPRequestHandler):
@@ -430,7 +437,9 @@ class DemoHandler(BaseHTTPRequestHandler):
             self._send_json({"job": JOB_STORE.to_summary(job)})
             return
 
-        if len(parts) == 4 and parts[3] == "source.pdf":
+        if (len(parts) == 4 and parts[3] == "source.pdf") or (
+            len(parts) == 5 and parts[3] == "source"
+        ):
             self._send_file(
                 job.source_path.read_bytes(),
                 content_type="application/pdf",
