@@ -55,7 +55,7 @@ class ParseJob:
     filename: str
     source_path: Path
     options: JobOptions
-    status: str = "queued"
+    status: str = "uploaded"
     created_at: float = 0.0
     updated_at: float = 0.0
     error: str = ""
@@ -110,6 +110,16 @@ class JobStore:
             job.updated_at = time.time()
             return job
 
+    def mark_queued(self, job_id: str) -> ParseJob | None:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                return None
+            job.status = "queued"
+            job.error = ""
+            job.updated_at = time.time()
+            return job
+
     def mark_done(self, job_id: str, result_json: dict, markdown: str) -> ParseJob | None:
         with self._lock:
             job = self._jobs.get(job_id)
@@ -147,6 +157,7 @@ class JobStore:
             "has_result": job.result_json is not None,
             "links": {
                 "self": f"/api/jobs/{job.id}",
+                "parse": f"/api/jobs/{job.id}/parse",
                 "source_pdf": f"/api/jobs/{job.id}/source.pdf",
                 "json": f"/api/jobs/{job.id}/result.json",
                 "markdown": f"/api/jobs/{job.id}/result.md",
@@ -266,6 +277,7 @@ def api_index_payload() -> dict:
         "endpoints": {
             "jobs": "/api/jobs",
             "job_detail": "/api/jobs/{job_id}",
+            "parse": "/api/jobs/{job_id}/parse",
             "source_pdf": "/api/jobs/{job_id}/source.pdf",
             "result_json": "/api/jobs/{job_id}/result.json",
             "result_markdown": "/api/jobs/{job_id}/result.md",
@@ -299,6 +311,10 @@ class DemoHandler(BaseHTTPRequestHandler):
         if path == "/api/jobs":
             self._handle_create_job()
             return
+        parts = path.strip("/").split("/")
+        if len(parts) == 4 and parts[:2] == ["api", "jobs"] and parts[3] == "parse":
+            self._handle_parse_job(parts[2])
+            return
         if path != "/parse":
             self.send_error(HTTPStatus.NOT_FOUND)
             return
@@ -330,6 +346,46 @@ class DemoHandler(BaseHTTPRequestHandler):
                 status=HTTPStatus.INTERNAL_SERVER_ERROR,
             )
 
+    def _handle_parse_job(self, job_id: str) -> None:
+        try:
+            job = JOB_STORE.get(job_id)
+            if job is None:
+                self._send_json({"error": "Job not found"}, status=HTTPStatus.NOT_FOUND)
+                return
+            if job.status in {"queued", "running"}:
+                self._send_json(
+                    {"job": JOB_STORE.to_summary(job)},
+                    status=HTTPStatus.ACCEPTED,
+                )
+                return
+            if job.status == "done":
+                self._send_json({"job": JOB_STORE.to_summary(job)})
+                return
+
+            config = load_demo_config(ROOT_DIR / ".env")
+            if job.options.use_vlm and build_vlm_client(config) is None:
+                self._send_json(
+                    {"error": ".env에 MODEL_API_KEY, MODEL_NAME, MODEL_BASE_URL을 모두 설정해야 VLM을 사용할 수 있습니다."},
+                    status=HTTPStatus.BAD_REQUEST,
+                )
+                return
+
+            queued = JOB_STORE.mark_queued(job.id)
+            if queued is None:
+                self._send_json({"error": "Job not found"}, status=HTTPStatus.NOT_FOUND)
+                return
+            start_job(queued.id, config=config)
+            self._send_json(
+                {"job": JOB_STORE.to_summary(queued)},
+                status=HTTPStatus.ACCEPTED,
+            )
+        except Exception as exc:
+            traceback.print_exc()
+            self._send_json(
+                {"error": f"{type(exc).__name__}: {exc}"},
+                status=HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+
     def _enqueue_job(self) -> tuple[ParseJob | None, str]:
         fields, uploaded = self._parse_multipart()
         if uploaded is None or not uploaded.content:
@@ -349,7 +405,6 @@ class DemoHandler(BaseHTTPRequestHandler):
                 auto_slice=fields.get("auto_slice", "off") == "on",
             ),
         )
-        start_job(job.id, config=config)
         return job, ""
 
     def _handle_get_api(self, path: str) -> None:
@@ -1154,6 +1209,11 @@ def render_page(
         previewBody.innerHTML = `<div class="error">${{escapeHtml(job.error || 'Parsing failed.')}}</div>`;
         return;
       }}
+      if (job.status === 'uploaded') {{
+        previewBody.className = 'result-body';
+        previewBody.innerHTML = '<div class="empty-state">업로드 완료. 실행을 누르면 파싱을 시작합니다.</div>';
+        return;
+      }}
       if (job.status !== 'done') {{
         previewBody.className = 'result-body';
         previewBody.innerHTML = `<div class="empty-state">Status: ${{escapeHtml(job.status)}}</div>`;
@@ -1194,16 +1254,15 @@ def render_page(
       `;
     }}
 
-    async function submitUpload() {{
-      const button = form.querySelector('button[type="submit"]');
+    async function uploadSelectedFile() {{
       if (!fileInput.files.length) {{
         previewBody.className = 'result-body';
         previewBody.innerHTML = '<div class="error">PDF 파일을 먼저 선택해 주세요.</div>';
         fileInput.click();
         return;
       }}
-      button.disabled = true;
-      button.textContent = 'Uploading...';
+      uploadTrigger.disabled = true;
+      uploadTrigger.textContent = '업로드 중...';
       try {{
         const response = await fetch('/api/jobs', {{
           method: 'POST',
@@ -1218,7 +1277,35 @@ def render_page(
         selectedFileName.textContent = '선택된 파일 없음';
         form.querySelector('input[name="trim"]').checked = true;
         form.querySelector('input[name="auto_slice"]').checked = true;
-        pdfCanvas.innerHTML = '<div class="pdf-empty">업로드한 PDF를 처리 중입니다.</div>';
+        await refreshJobs();
+      }} catch (error) {{
+        previewBody.className = 'result-body';
+        previewBody.innerHTML = `<div class="error">${{escapeHtml(error.message)}}</div>`;
+      }} finally {{
+        uploadTrigger.disabled = false;
+        uploadTrigger.textContent = '업로드';
+      }}
+    }}
+
+    async function parseSelectedJob() {{
+      const button = form.querySelector('button[type="submit"]');
+      if (!selectedJobId) {{
+        previewBody.className = 'result-body';
+        previewBody.innerHTML = '<div class="error">먼저 PDF를 업로드해 주세요.</div>';
+        fileInput.click();
+        return;
+      }}
+      button.disabled = true;
+      button.textContent = '실행 중...';
+      try {{
+        const response = await fetch(`/api/jobs/${{encodeURIComponent(selectedJobId)}}/parse`, {{
+          method: 'POST'
+        }});
+        const data = await response.json();
+        if (!response.ok) {{
+          throw new Error(data.error || 'Parse failed');
+        }}
+        selectedJobId = data.job.id;
         await refreshJobs();
       }} catch (error) {{
         previewBody.className = 'result-body';
@@ -1231,7 +1318,7 @@ def render_page(
 
     form.addEventListener('submit', async (event) => {{
       event.preventDefault();
-      await submitUpload();
+      await parseSelectedJob();
     }});
 
     uploadTrigger.addEventListener('click', () => {{
@@ -1243,7 +1330,7 @@ def render_page(
         ? fileInput.files[0].name
         : '선택된 파일 없음';
       if (fileInput.files.length) {{
-        await submitUpload();
+        await uploadSelectedFile();
       }}
     }});
 

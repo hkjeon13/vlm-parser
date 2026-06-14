@@ -49,7 +49,7 @@ def test_build_vlm_client_returns_none_when_config_is_incomplete():
     assert build_vlm_client(config) is None
 
 
-def test_job_store_creates_queued_job_with_uploaded_pdf(tmp_path: Path):
+def test_job_store_creates_uploaded_job_with_uploaded_pdf(tmp_path: Path):
     store = JobStore(tmp_path)
 
     job = store.create(
@@ -57,12 +57,25 @@ def test_job_store_creates_queued_job_with_uploaded_pdf(tmp_path: Path):
         JobOptions(use_vlm=False, render_dpi=180, trim=True, auto_slice=True),
     )
 
-    assert job.status == "queued"
+    assert job.status == "uploaded"
     assert job.filename == "sample.pdf"
     assert job.source_path.read_bytes() == b"%PDF-1.7"
     assert store.get(job.id) == job
     assert store.list()[0].id == job.id
-    assert store.to_summary(job)["status"] == "queued"
+    assert store.to_summary(job)["status"] == "uploaded"
+
+
+def test_job_store_can_mark_uploaded_job_queued(tmp_path: Path):
+    store = JobStore(tmp_path)
+    job = store.create(
+        UploadedFile(filename="sample.pdf", content=b"%PDF-1.7"),
+        JobOptions(use_vlm=False, render_dpi=180, trim=True, auto_slice=True),
+    )
+
+    queued = store.mark_queued(job.id)
+
+    assert queued is not None
+    assert queued.status == "queued"
 
 
 def test_process_job_stores_json_and_markdown_results(tmp_path: Path):
@@ -125,7 +138,8 @@ def test_render_page_links_upload_button_to_file_input():
     assert 'name="pdf"' in html
     assert 'id="selected-file-name"' in html
     assert "fileInput.click()" in html
-    assert "submitUpload()" in html
+    assert "uploadSelectedFile()" in html
+    assert "parseSelectedJob()" in html
     assert "fileInput.addEventListener('change', async" in html
 
 
@@ -135,6 +149,7 @@ def test_api_index_payload_lists_job_endpoints():
     assert payload["name"] == "vlm-parser demo api"
     assert payload["endpoints"]["jobs"] == "/api/jobs"
     assert payload["endpoints"]["job_detail"] == "/api/jobs/{job_id}"
+    assert payload["endpoints"]["parse"] == "/api/jobs/{job_id}/parse"
 
 
 def test_content_disposition_header_supports_korean_filenames():
