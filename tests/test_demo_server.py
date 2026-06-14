@@ -147,6 +147,17 @@ def test_render_page_links_upload_button_to_file_input():
     assert "fileInput.addEventListener('change', async" in html
 
 
+def test_render_page_places_download_actions_in_tab_bar():
+    html = render_page(config=DemoConfig())
+
+    assert 'id="tab-download-links"' in html
+    assert "tabDownloadLinks" in html
+    assert 'title="Markdown 다운로드"' in html
+    assert 'title="JSON 다운로드"' in html
+    assert "job.links.markdown" in html
+    assert "job.links.json" in html
+
+
 def test_render_page_keeps_pdf_iframe_stable_during_polling():
     html = render_page(config=DemoConfig())
 
@@ -180,6 +191,15 @@ def test_render_page_displays_results_by_page():
     assert "selectedJson.pages" in html
     assert "page.page_number" in html
     assert "Page ${escapeHtml(pageNumber)}" in html
+
+
+def test_render_page_keeps_result_scroll_stable_during_polling():
+    html = render_page(config=DemoConfig())
+
+    assert "let renderedResultKey = null;" in html
+    assert "function resultRenderKey(job) {" in html
+    assert "if (renderedResultKey === resultRenderKey(job)) {" in html
+    assert "renderedResultKey = resultRenderKey(selectedJob);" in html
 
 
 def test_render_page_embeds_valid_javascript(tmp_path: Path):

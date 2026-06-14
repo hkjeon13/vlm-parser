@@ -963,6 +963,7 @@ def render_page(
     }}
     .result-tabs {{
       display: flex;
+      align-items: flex-end;
       padding: 0 18px;
       border-bottom: 1px solid var(--line);
     }}
@@ -982,6 +983,29 @@ def render_page(
       color: var(--ink);
       transform: translateY(1px);
     }}
+    .tab-download-links {{
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding-bottom: 6px;
+    }}
+    .tab-download-links a {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      min-height: 30px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 4px 9px;
+      color: var(--accent-strong);
+      background: var(--panel);
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 800;
+    }}
+    .tab-download-links a:hover {{ border-color: var(--accent); }}
     .result-body {{
       min-height: 0;
       overflow: auto;
@@ -1149,6 +1173,7 @@ def render_page(
           <button id="tab-preview" class="active" type="button" data-tab="preview">미리보기</button>
           <button id="tab-html" type="button" data-tab="html">HTML</button>
           <button id="tab-json" type="button" data-tab="json">JSON</button>
+          <div id="tab-download-links" class="tab-download-links"></div>
         </div>
         <div id="preview-body" class="result-body">
           <div class="empty-state">Upload a PDF to start parsing asynchronously.</div>
@@ -1167,6 +1192,7 @@ def render_page(
     const jobCount = document.getElementById('job-count');
     const selectedTitle = document.getElementById('selected-title');
     const downloadLinks = document.getElementById('download-links');
+    const tabDownloadLinks = document.getElementById('tab-download-links');
     const previewBody = document.getElementById('preview-body');
     const pdfCanvas = document.getElementById('pdf-canvas');
     const jobIdLabel = document.getElementById('job-id-label');
@@ -1176,6 +1202,7 @@ def render_page(
     let selectedMarkdown = '';
     let selectedJson = null;
     let renderedPdfJobId = null;
+    let renderedResultKey = null;
     let activeTab = 'preview';
 
     function escapeHtml(value) {{
@@ -1220,6 +1247,10 @@ def render_page(
       }}).join('\\n\\n---\\n\\n');
     }}
 
+    function resultRenderKey(job) {{
+      return `${{job.id}}:${{job.status}}:${{job.updated_at}}:${{activeTab}}`;
+    }}
+
     async function refreshJobs() {{
       const response = await fetch('/api/jobs');
       const data = await response.json();
@@ -1251,26 +1282,39 @@ def render_page(
       selectedTitle.textContent = job.filename;
       jobIdLabel.textContent = job.id;
       downloadLinks.innerHTML = '';
+      tabDownloadLinks.innerHTML = '';
       renderPdfPreview(job);
       if (job.status === 'failed') {{
+        renderedResultKey = null;
         previewBody.className = 'result-body';
         previewBody.innerHTML = `<div class="error">${{escapeHtml(job.error || 'Parsing failed.')}}</div>`;
         return;
       }}
       if (job.status === 'uploaded') {{
+        renderedResultKey = null;
         previewBody.className = 'result-body';
         previewBody.innerHTML = '<div class="empty-state">업로드 완료. 실행을 누르면 파싱을 시작합니다.</div>';
         return;
       }}
       if (job.status !== 'done') {{
+        renderedResultKey = null;
         previewBody.className = 'result-body';
         previewBody.innerHTML = `<div class="empty-state">Status: ${{escapeHtml(job.status)}}</div>`;
         return;
       }}
       downloadLinks.innerHTML = `
-        <a href="${{job.links.markdown}}" title="Markdown 다운로드">MD</a>
-        <a href="${{job.links.json}}" title="JSON 다운로드">JSON</a>
       `;
+      tabDownloadLinks.innerHTML = `
+        <a href="${{job.links.markdown}}" title="Markdown 다운로드" aria-label="Markdown 다운로드">
+          <span aria-hidden="true">↓</span><span>MD</span>
+        </a>
+        <a href="${{job.links.json}}" title="JSON 다운로드" aria-label="JSON 다운로드">
+          <span aria-hidden="true">↓</span><span>JSON</span>
+        </a>
+      `;
+      if (renderedResultKey === resultRenderKey(job)) {{
+        return;
+      }}
       const markdownResponse = await fetch(job.links.markdown);
       selectedMarkdown = await markdownResponse.text();
       const jsonResponse = await fetch(job.links.json);
@@ -1286,6 +1330,7 @@ def render_page(
       if (!selectedJob || selectedJob.status !== 'done') {{
         return;
       }}
+      renderedResultKey = resultRenderKey(selectedJob);
       if (activeTab === 'json') {{
         previewBody.innerHTML = `<pre>${{escapeHtml(JSON.stringify(selectedJson, null, 2))}}</pre>`;
         return;
