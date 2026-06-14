@@ -15,7 +15,7 @@ from email.parser import BytesParser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 from uuid import uuid4
 
 
@@ -273,6 +273,13 @@ def api_index_payload() -> dict:
     }
 
 
+def content_disposition_header(disposition: str, filename: str) -> str:
+    suffix = Path(filename).suffix or ".bin"
+    ascii_name = f"download{suffix}"
+    encoded_name = quote(Path(filename).name, safe="")
+    return f'{disposition}; filename="{ascii_name}"; filename*=UTF-8\'\'{encoded_name}'
+
+
 class DemoHandler(BaseHTTPRequestHandler):
     server_version = "vlm-parser-demo/0.1"
 
@@ -446,11 +453,13 @@ class DemoHandler(BaseHTTPRequestHandler):
         inline: bool = False,
     ) -> None:
         disposition = "inline" if inline else "attachment"
-        safe_name = Path(filename).name.replace('"', "")
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(content)))
-        self.send_header("Content-Disposition", f'{disposition}; filename="{safe_name}"')
+        self.send_header(
+            "Content-Disposition",
+            content_disposition_header(disposition, filename),
+        )
         self.end_headers()
         self.wfile.write(content)
 

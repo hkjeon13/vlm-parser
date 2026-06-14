@@ -7,6 +7,7 @@ from demo.server import (
     UploadedFile,
     api_index_payload,
     build_vlm_client,
+    content_disposition_header,
     load_demo_config,
     normalize_model_base_url,
     process_job,
@@ -134,3 +135,14 @@ def test_api_index_payload_lists_job_endpoints():
     assert payload["name"] == "vlm-parser demo api"
     assert payload["endpoints"]["jobs"] == "/api/jobs"
     assert payload["endpoints"]["job_detail"] == "/api/jobs/{job_id}"
+
+
+def test_content_disposition_header_supports_korean_filenames():
+    header = content_disposition_header(
+        "inline",
+        "2026년_그룹_정보보호_수준진단.pdf",
+    )
+
+    header.encode("latin-1")
+    assert header.startswith('inline; filename="download.pdf"')
+    assert "filename*=UTF-8''" in header
