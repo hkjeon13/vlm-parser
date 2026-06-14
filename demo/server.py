@@ -632,6 +632,7 @@ def render_page(
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      gap: 6px;
       min-height: 34px;
       border: 2px solid var(--accent);
       border-radius: 7px;
@@ -646,6 +647,15 @@ def render_page(
       height: 1px;
       opacity: 0;
       pointer-events: none;
+    }}
+    .selected-file-name {{
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
     }}
     .upload-bar .options {{
       display: flex;
@@ -1007,8 +1017,9 @@ def render_page(
     {error_section}
     {notice_section}
     <form id="upload-form" class="upload-bar" action="/api/jobs" method="post" enctype="multipart/form-data">
-      <label class="upload-button" for="pdf-input">업로드</label>
-      <input id="pdf-input" name="pdf" type="file" accept="application/pdf,.pdf" required>
+      <button id="upload-trigger" class="upload-button" type="button">업로드</button>
+      <input id="pdf-input" name="pdf" type="file" accept="application/pdf,.pdf">
+      <span id="selected-file-name" class="selected-file-name">선택된 파일 없음</span>
       <div class="options">
         <label>
           Render DPI
@@ -1060,6 +1071,9 @@ def render_page(
   </main>
   <script>
     const form = document.getElementById('upload-form');
+    const uploadTrigger = document.getElementById('upload-trigger');
+    const fileInput = document.getElementById('pdf-input');
+    const selectedFileName = document.getElementById('selected-file-name');
     const jobList = document.getElementById('job-list');
     const jobCount = document.getElementById('job-count');
     const selectedTitle = document.getElementById('selected-title');
@@ -1172,6 +1186,12 @@ def render_page(
     form.addEventListener('submit', async (event) => {{
       event.preventDefault();
       const button = form.querySelector('button[type="submit"]');
+      if (!fileInput.files.length) {{
+        previewBody.className = 'result-body';
+        previewBody.innerHTML = '<div class="error">PDF 파일을 먼저 선택해 주세요.</div>';
+        fileInput.click();
+        return;
+      }}
       button.disabled = true;
       button.textContent = 'Uploading...';
       try {{
@@ -1185,6 +1205,7 @@ def render_page(
         }}
         selectedJobId = data.job.id;
         form.reset();
+        selectedFileName.textContent = '선택된 파일 없음';
         form.querySelector('input[name="trim"]').checked = true;
         form.querySelector('input[name="auto_slice"]').checked = true;
         pdfCanvas.innerHTML = '<div class="pdf-empty">업로드한 PDF를 처리 중입니다.</div>';
@@ -1196,6 +1217,16 @@ def render_page(
         button.disabled = false;
         button.textContent = '실행';
       }}
+    }});
+
+    uploadTrigger.addEventListener('click', () => {{
+      fileInput.click();
+    }});
+
+    fileInput.addEventListener('change', () => {{
+      selectedFileName.textContent = fileInput.files.length
+        ? fileInput.files[0].name
+        : '선택된 파일 없음';
     }});
 
     jobList.addEventListener('click', async (event) => {{

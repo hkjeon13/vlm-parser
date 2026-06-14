@@ -119,9 +119,11 @@ def test_render_page_uses_three_pane_review_layout():
 def test_render_page_links_upload_button_to_file_input():
     html = render_page(config=DemoConfig())
 
-    assert 'for="pdf-input"' in html
+    assert 'id="upload-trigger"' in html
     assert 'id="pdf-input"' in html
     assert 'name="pdf"' in html
+    assert 'id="selected-file-name"' in html
+    assert "fileInput.click()" in html
 
 
 def test_api_index_payload_lists_job_endpoints():
