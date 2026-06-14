@@ -5,6 +5,7 @@ from demo.server import (
     JobOptions,
     JobStore,
     UploadedFile,
+    api_index_payload,
     build_vlm_client,
     load_demo_config,
     normalize_model_base_url,
@@ -121,3 +122,11 @@ def test_render_page_links_upload_button_to_file_input():
     assert 'for="pdf-input"' in html
     assert 'id="pdf-input"' in html
     assert 'name="pdf"' in html
+
+
+def test_api_index_payload_lists_job_endpoints():
+    payload = api_index_payload()
+
+    assert payload["name"] == "vlm-parser demo api"
+    assert payload["endpoints"]["jobs"] == "/api/jobs"
+    assert payload["endpoints"]["job_detail"] == "/api/jobs/{job_id}"

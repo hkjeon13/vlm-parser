@@ -259,6 +259,20 @@ def start_job(job_id: str, *, store: JobStore = JOB_STORE, config: DemoConfig) -
     thread.start()
 
 
+def api_index_payload() -> dict:
+    return {
+        "name": "vlm-parser demo api",
+        "status": "ok",
+        "endpoints": {
+            "jobs": "/api/jobs",
+            "job_detail": "/api/jobs/{job_id}",
+            "source_pdf": "/api/jobs/{job_id}/source.pdf",
+            "result_json": "/api/jobs/{job_id}/result.json",
+            "result_markdown": "/api/jobs/{job_id}/result.md",
+        },
+    }
+
+
 class DemoHandler(BaseHTTPRequestHandler):
     server_version = "vlm-parser-demo/0.1"
 
@@ -332,6 +346,10 @@ class DemoHandler(BaseHTTPRequestHandler):
         return job, ""
 
     def _handle_get_api(self, path: str) -> None:
+        if path in {"/api", "/api/"}:
+            self._send_json(api_index_payload())
+            return
+
         if path == "/api/jobs":
             self._send_json({"jobs": [JOB_STORE.to_summary(job) for job in JOB_STORE.list()]})
             return
