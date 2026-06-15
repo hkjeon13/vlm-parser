@@ -405,7 +405,8 @@ def test_render_page_includes_mobile_friendly_layout_rules():
     assert ".app-shell { min-width: 0; min-height: 100vh; height: auto; overflow: visible; display: block; }" in html
     assert ".topbar {" in html
     assert "grid-template-areas: \"title\" \"upload\";" in html
-    assert ".upload-bar { position: static; grid-area: upload; width: 100%; flex-wrap: wrap; }" in html
+    assert ".brand { grid-area: title; min-width: 0; }" in html
+    assert ".upload-bar { grid-area: upload; width: 100%; grid-template-columns: auto minmax(0, 1fr); }" in html
     assert ".workspace { display: flex; flex-direction: column; height: auto; }" in html
     assert ".left-rail { max-height: 220px; border-width: 0 0 1px 0; }" in html
     assert ".result-tabs { overflow-x: auto; flex-wrap: nowrap; padding: 0 12px; }" in html

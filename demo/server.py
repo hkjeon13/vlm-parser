@@ -1074,20 +1074,26 @@ def render_page(
     .app-shell {{
       position: relative;
       display: grid;
-      grid-template-rows: 60px minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr);
       height: 100vh;
       min-width: 1080px;
       overflow: hidden;
     }}
     .topbar {{
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr);
+      gap: 18px;
       align-items: center;
       margin: 0;
-      padding: 0 24px;
+      min-height: 76px;
+      padding: 10px 18px;
       border-bottom: 1px solid var(--line);
-      background: #f8fafc;
+      background: #fbfcfd;
     }}
-    .topbar .status {{
-      display: none;
+    .brand {{
+      display: grid;
+      gap: 4px;
+      min-width: 0;
     }}
     header {{
       display: flex;
@@ -1100,14 +1106,25 @@ def render_page(
     h1 {{ font-size: 16px; line-height: 1.05; }}
     h2 {{ font-size: 16px; }}
     .status {{
-      border: 1px solid var(--line);
-      background: var(--panel);
-      border-radius: 8px;
-      padding: 10px 12px;
-      min-width: 260px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
       color: var(--muted);
+      font-size: 12px;
+      line-height: 1.2;
     }}
-    .status strong {{ color: var(--ink); display: block; }}
+    .status strong {{
+      display: block;
+      max-width: 150px;
+      overflow: hidden;
+      color: var(--ink);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+    .status span {{
+      white-space: nowrap;
+    }}
     form {{
       display: grid;
       grid-template-columns: 1.4fr 1fr;
@@ -1119,27 +1136,25 @@ def render_page(
       margin-bottom: 16px;
     }}
     .upload-bar {{
-      position: absolute;
-      top: 10px;
-      right: 24px;
-      z-index: 2;
-      display: flex;
-      align-items: center;
-      grid-template-columns: none;
+      display: grid;
+      grid-template-columns: auto minmax(90px, 150px) minmax(0, 1fr);
+      align-items: end;
       margin: 0;
       border: 0;
       border-radius: 0;
       padding: 0;
       background: transparent;
-      gap: 8px;
+      gap: 8px 12px;
+      min-width: 0;
+      justify-self: stretch;
     }}
     .upload-button {{
       display: inline-flex;
       align-items: center;
       justify-content: center;
       gap: 6px;
-      min-height: 34px;
-      border: 2px solid var(--accent);
+      min-height: 36px;
+      border: 1px solid var(--accent);
       border-radius: 7px;
       background: #fff;
       color: var(--accent);
@@ -1154,7 +1169,7 @@ def render_page(
       pointer-events: none;
     }}
     .selected-file-name {{
-      max-width: 180px;
+      max-width: 150px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -1164,8 +1179,14 @@ def render_page(
     }}
     .upload-bar .options {{
       display: flex;
-      align-items: center;
-      gap: 8px;
+      align-items: end;
+      justify-content: flex-end;
+      flex-wrap: nowrap;
+      gap: 6px 10px;
+      min-width: 0;
+    }}
+    .upload-bar .options > * {{
+      min-width: 0;
     }}
     .upload-bar .options > label:first-child {{
       display: none;
@@ -1178,7 +1199,7 @@ def render_page(
     }}
     .upload-bar .options label.check:nth-of-type(4) {{
       display: flex;
-      min-height: 34px;
+      min-height: 36px;
       align-items: center;
       gap: 6px;
       color: var(--muted);
@@ -1186,8 +1207,40 @@ def render_page(
       font-weight: 750;
       white-space: nowrap;
     }}
+    .upload-bar .options label:not(.check) {{
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+      line-height: 1.1;
+    }}
+    .upload-bar .options label:not(.check):has(select) {{
+      flex: 1 1 420px;
+      max-width: 720px;
+    }}
+    .upload-bar .options label:not(.check):has(input[type="text"]) {{
+      flex: 0 1 220px;
+    }}
+    .upload-bar select,
+    .upload-bar input[type="text"] {{
+      width: 100%;
+      min-width: 0;
+      height: 28px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      font-size: 12px;
+      padding: 3px 8px;
+    }}
     .upload-bar button[type="submit"] {{
-      min-height: 34px;
+      min-height: 36px;
+      min-width: 64px;
+      flex: 0 0 auto;
+      justify-self: end;
       border-radius: 7px;
       background: var(--accent);
       color: #fff;
@@ -1653,11 +1706,21 @@ def render_page(
         min-height: 0;
         padding: 10px 12px;
       }}
-      .topbar > div:first-child {{ grid-area: title; min-width: 0; }}
-      .upload-bar {{ position: static; grid-area: upload; width: 100%; flex-wrap: wrap; }}
-      .selected-file-name {{ flex: 1 1 130px; max-width: none; }}
-      .upload-bar .options {{ flex: 1 0 100%; justify-content: space-between; }}
-      .upload-bar .options label.check:nth-of-type(4) {{ flex: 1 1 auto; min-width: 0; white-space: normal; }}
+      .brand {{ grid-area: title; min-width: 0; }}
+      .upload-bar {{ grid-area: upload; width: 100%; grid-template-columns: auto minmax(0, 1fr); }}
+      .selected-file-name {{ max-width: none; }}
+      .upload-bar .options {{
+        grid-column: 1 / -1;
+        flex-wrap: wrap;
+        justify-content: stretch;
+        align-items: end;
+      }}
+      .upload-bar .options label:not(.check):has(select),
+      .upload-bar .options label:not(.check):has(input[type="text"]) {{
+        flex: 1 1 220px;
+        max-width: none;
+      }}
+      .upload-bar .options label.check:nth-of-type(4) {{ min-width: 0; white-space: normal; }}
       .upload-bar button[type="submit"] {{ flex: 0 0 auto; }}
       .workspace {{ display: flex; flex-direction: column; height: auto; }}
       .workspace.rail-collapsed .job-list {{ display: grid; }}
@@ -1681,6 +1744,7 @@ def render_page(
     }}
     @media (max-width: 430px) {{
       h1 {{ font-size: 15px; }}
+      .topbar {{ grid-template-columns: 1fr; }}
       .upload-button, .upload-bar button[type="submit"] {{ padding: 0 10px; }}
       .tab-download-links a {{ padding: 4px 7px; }}
     }}
@@ -1689,33 +1753,33 @@ def render_page(
 <body>
   <main class="app-shell">
     <header class="topbar">
-      <div>
+      <div class="brand">
         <h1>vlm-parser demo</h1>
+        <div class="status">
+          <strong>{model_label}</strong>
+          <span>VLM config: {vlm_status}</span>
+        </div>
       </div>
-      <div class="status">
-        <strong>{model_label}</strong>
-        <span>VLM config: {vlm_status}</span>
-      </div>
+      <form id="upload-form" class="upload-bar" action="/api/files" method="post" enctype="multipart/form-data">
+        <button id="upload-trigger" class="upload-button" type="button">업로드</button>
+        <input id="pdf-input" name="pdf" type="file" accept="application/pdf,.pdf">
+        <span id="selected-file-name" class="selected-file-name">선택된 파일 없음</span>
+        <div class="options">
+          <label>
+            Render DPI
+            <input name="render_dpi" type="number" min="72" max="300" step="12" value="180">
+          </label>
+          <label class="check"><input name="trim" type="checkbox" checked> Trim margins</label>
+          <label class="check"><input name="auto_slice" type="checkbox" checked> Auto slice pages</label>
+          <label class="check"><input name="use_vlm" type="checkbox"> Use VLM rewrite</label>
+          {model_select}
+          {model_manual}
+          <button type="submit">실행</button>
+        </div>
+      </form>
     </header>
     {error_section}
     {notice_section}
-    <form id="upload-form" class="upload-bar" action="/api/files" method="post" enctype="multipart/form-data">
-      <button id="upload-trigger" class="upload-button" type="button">업로드</button>
-      <input id="pdf-input" name="pdf" type="file" accept="application/pdf,.pdf">
-      <span id="selected-file-name" class="selected-file-name">선택된 파일 없음</span>
-      <div class="options">
-        <label>
-          Render DPI
-          <input name="render_dpi" type="number" min="72" max="300" step="12" value="180">
-        </label>
-        <label class="check"><input name="trim" type="checkbox" checked> Trim margins</label>
-        <label class="check"><input name="auto_slice" type="checkbox" checked> Auto slice pages</label>
-        <label class="check"><input name="use_vlm" type="checkbox"> Use VLM rewrite</label>
-        {model_select}
-        {model_manual}
-        <button type="submit">실행</button>
-      </div>
-    </form>
     <section class="workspace">
       <aside class="jobs left-rail">
         <header>
