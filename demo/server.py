@@ -1681,8 +1681,7 @@ def render_page(
       margin: 0;
       font-size: 13px;
     }}
-    .detail-card,
-    .action-card {{
+    .detail-card {{
       display: grid;
       gap: 7px;
       border: 1px solid var(--line);
@@ -1700,38 +1699,6 @@ def render_page(
       color: var(--ink);
       font-size: 12px;
       overflow-wrap: anywhere;
-    }}
-    .action-list {{
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 6px;
-    }}
-    .action-list button,
-    .action-list a {{
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      min-height: 31px;
-      border: 1px solid var(--line);
-      border-radius: 7px;
-      background: #fff;
-      color: var(--ink);
-      padding: 6px 8px;
-      text-decoration: none;
-      font: inherit;
-      font-size: 12px;
-      font-weight: 750;
-    }}
-    .action-list .primary {{
-      grid-column: 1 / -1;
-    }}
-    .action-list button.primary {{
-      border-color: transparent;
-      background: var(--accent);
-      color: #fff;
-    }}
-    .action-list button.danger {{
-      color: var(--error);
     }}
     .tab-download-links {{
       margin-left: auto;
@@ -1978,12 +1945,6 @@ def render_page(
               <strong><span id="detail-created">-</span> · <span id="detail-model">-</span></strong>
             </div>
           </div>
-          <div class="action-card action-list">
-            <button id="detail-reparse" class="primary" type="button">다시 파싱 <span>↻</span></button>
-            <a id="detail-export-json" href="#" aria-disabled="true">결과 <span>⌄</span></a>
-            <a id="detail-source-download" href="#" aria-disabled="true">원본 <span>⌄</span></a>
-            <button id="detail-delete" class="danger" type="button">삭제 <span>⌫</span></button>
-          </div>
         </section>
         <button id="upload-trigger" class="upload-dropzone" type="button">
           <span aria-hidden="true">⇧</span>
@@ -2045,10 +2006,6 @@ def render_page(
     const detailPages = document.getElementById('detail-pages');
     const detailCreated = document.getElementById('detail-created');
     const detailModel = document.getElementById('detail-model');
-    const detailReparse = document.getElementById('detail-reparse');
-    const detailExportJson = document.getElementById('detail-export-json');
-    const detailSourceDownload = document.getElementById('detail-source-download');
-    const detailDelete = document.getElementById('detail-delete');
     const tabButtons = Array.from(document.querySelectorAll('[data-tab]'));
     let selectedFileId = null;
     let selectedJobId = null;
@@ -2175,14 +2132,6 @@ def render_page(
       detailPages.textContent = pages;
       detailCreated.textContent = formatDateTime(file?.created_at);
       detailModel.textContent = job?.model || '-';
-      if (detailExportJson) {{
-        detailExportJson.href = job?.links?.json || '#';
-        detailExportJson.setAttribute('aria-disabled', job?.links?.json ? 'false' : 'true');
-      }}
-      if (detailSourceDownload) {{
-        detailSourceDownload.href = file?.links?.source_pdf || '#';
-        detailSourceDownload.setAttribute('aria-disabled', file?.links?.source_pdf ? 'false' : 'true');
-      }}
     }}
 
     function pdfPreviewUrl(file) {{
@@ -2566,16 +2515,6 @@ def render_page(
 
     modelSelect?.addEventListener('change', syncModelField);
     modelInput?.addEventListener('input', syncModelField);
-
-    detailReparse?.addEventListener('click', async () => {{
-      await parseSelectedFile();
-    }});
-
-    detailDelete?.addEventListener('click', async () => {{
-      if (selectedFileId) {{
-        await deleteFile(selectedFileId);
-      }}
-    }});
 
     fileInput.addEventListener('change', async () => {{
       selectedFileName.textContent = fileInput.files.length
