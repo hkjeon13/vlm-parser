@@ -1085,12 +1085,12 @@ def render_page(
     }}
     .topbar {{
       display: grid;
-      grid-template-columns: 330px minmax(0, 1fr) 42px;
-      gap: 24px;
+      grid-template-columns: minmax(260px, 330px) minmax(0, 1fr) 42px;
+      gap: 20px;
       align-items: center;
       margin: 0;
-      min-height: 86px;
-      padding: 14px 26px;
+      min-height: 78px;
+      padding: 12px 26px;
       border-bottom: 1px solid var(--line);
       background: #fff;
     }}
@@ -1163,7 +1163,7 @@ def render_page(
     }}
     .upload-bar {{
       display: flex;
-      align-items: end;
+      align-items: center;
       justify-content: flex-end;
       margin: 0;
       border: 0;
@@ -1173,6 +1173,7 @@ def render_page(
       gap: 8px 12px;
       min-width: 0;
       justify-self: stretch;
+      height: 100%;
     }}
     .upload-button {{
       display: inline-flex;
@@ -1195,6 +1196,8 @@ def render_page(
       pointer-events: none;
     }}
     .selected-file-name {{
+      flex: 0 1 150px;
+      min-width: 0;
       max-width: 180px;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -1205,12 +1208,12 @@ def render_page(
     }}
     .upload-bar .options {{
       display: flex;
-      align-items: end;
+      align-items: center;
       justify-content: flex-end;
       flex-wrap: nowrap;
       gap: 12px;
       min-width: 0;
-      width: 100%;
+      flex: 1 1 auto;
     }}
     .upload-bar .options > * {{
       min-width: 0;
@@ -1234,6 +1237,7 @@ def render_page(
       font-size: 12px;
       font-weight: 750;
       white-space: nowrap;
+      margin-top: 15px;
     }}
     .upload-bar input[type="number"] {{
       height: 34px;
@@ -1250,6 +1254,8 @@ def render_page(
       font-size: 12px;
       font-weight: 750;
       line-height: 1.1;
+      align-self: stretch;
+      align-content: end;
     }}
     .upload-bar .options label:not(.check):has(select) {{
       flex: 1 1 420px;
@@ -1442,23 +1448,6 @@ def render_page(
       font: inherit;
       font-size: 13px;
     }}
-    .upload-dropzone {{
-      display: grid;
-      place-items: center;
-      gap: 8px;
-      margin: auto 16px 18px;
-      min-height: 126px;
-      border: 1px dashed #b9c2d0;
-      border-radius: 14px;
-      background: #fff;
-      color: var(--muted);
-      text-align: center;
-      font-size: 13px;
-    }}
-    .upload-dropzone strong {{
-      color: var(--ink);
-      font-size: 14px;
-    }}
     .storage-meter {{
       display: grid;
       gap: 8px;
@@ -1511,6 +1500,8 @@ def render_page(
       font-weight: 750;
     }}
     .file-menu-button {{
+      display: inline-grid;
+      place-items: center;
       width: 32px;
       min-height: 32px;
       align-self: start;
@@ -1832,17 +1823,17 @@ def render_page(
         position: sticky;
         top: 0;
         z-index: 5;
-        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-columns: minmax(0, 1fr);
         grid-template-areas: "title" "upload";
         gap: 10px;
         min-height: 0;
         padding: 10px 12px;
       }}
       .brand {{ grid-area: title; min-width: 0; }}
-      .upload-bar {{ grid-area: upload; width: 100%; grid-template-columns: auto minmax(0, 1fr); }}
+      .account-pill {{ display: none; }}
+      .upload-bar {{ grid-area: upload; width: 100%; flex-wrap: wrap; }}
       .selected-file-name {{ max-width: none; }}
       .upload-bar .options {{
-        grid-column: 1 / -1;
         flex-wrap: wrap;
         justify-content: stretch;
         align-items: end;
@@ -1860,7 +1851,7 @@ def render_page(
       .workspace.rail-collapsed .left-rail .badge {{ display: inline-flex; }}
       .workspace-resizer {{ display: none; }}
       .left-rail {{ max-height: 220px; border-width: 0 0 1px 0; }}
-      .upload-dropzone, .storage-meter, .rail-detail {{ display: none; }}
+      .storage-meter, .rail-detail {{ display: none; }}
       .jobs header {{ padding: 10px 12px; }}
       .job-list {{ height: auto; max-height: 164px; }}
       .pdf-stage {{ min-height: 520px; border-right: 0; border-bottom: 1px solid var(--line); }}
@@ -1898,6 +1889,8 @@ def render_page(
       </div>
       <form id="upload-form" class="upload-bar" action="/api/files" method="post" enctype="multipart/form-data">
         <input id="pdf-input" name="pdf" type="file" accept="application/pdf,.pdf">
+        <button id="upload-trigger" class="upload-button" type="button">업로드</button>
+        <span id="selected-file-name" class="selected-file-name">선택된 파일 없음</span>
         <div class="options">
           <label>
             Render DPI
@@ -1923,7 +1916,7 @@ def render_page(
             <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Files 사이드바 접기" title="Files 사이드바 접기">‹</button>
             <h2>파일</h2>
           </div>
-          <button class="file-menu-button" type="button" title="파일 메뉴" aria-label="파일 메뉴">...</button>
+          <button class="file-menu-button" type="button" title="파일 메뉴" aria-label="파일 메뉴">⋯</button>
         </header>
         <input class="rail-search" type="search" placeholder="파일명 검색" aria-label="파일명 검색">
         <div id="job-list" class="job-list">
@@ -1946,11 +1939,6 @@ def render_page(
             </div>
           </div>
         </section>
-        <button id="upload-trigger" class="upload-dropzone" type="button">
-          <span aria-hidden="true">⇧</span>
-          <strong>파일을 드래그하여 업로드</strong>
-          <span id="selected-file-name" class="selected-file-name">PDF, PNG, JPG (최대 100MB)</span>
-        </button>
         <div class="storage-meter">
           <span>저장소 사용량</span>
           <div>1.24 GB / 10 GB</div>
@@ -2236,7 +2224,7 @@ def render_page(
             <span>${{fileMeta(file)}}</span>
             ${{['queued', 'running'].includes(file.latest_job?.status) ? progressBar(file.latest_job) : ''}}
           </div>
-          <button class="file-menu-button" type="button" data-file-menu-id="${{escapeHtml(file.id)}}" title="파일 메뉴" aria-label="파일 메뉴">...</button>
+          <button class="file-menu-button" type="button" data-file-menu-id="${{escapeHtml(file.id)}}" title="파일 메뉴" aria-label="파일 메뉴">⋯</button>
           <div class="file-menu" data-file-menu="${{escapeHtml(file.id)}}" ${{file.id === openMenuFileId ? '' : 'hidden'}}>
             <button type="button" data-file-action="details">상세정보</button>
             <button class="danger" type="button" data-file-action="delete">삭제</button>

@@ -319,7 +319,8 @@ def test_render_page_uses_document_workspace_layout():
     assert "JSON" in html
     assert "<h2>파일</h2>" in html
     assert "<h2>선택 파일</h2>" in html
-    assert "파일을 드래그하여 업로드" in html
+    assert "파일을 드래그하여 업로드" not in html
+    assert "upload-dropzone" not in html
     assert "parse-step" not in html
     assert "pdf-controls" not in html
 
@@ -414,7 +415,7 @@ def test_render_page_includes_mobile_friendly_layout_rules():
     assert ".topbar {" in html
     assert "grid-template-areas: \"title\" \"upload\";" in html
     assert ".brand { grid-area: title; min-width: 0; }" in html
-    assert ".upload-bar { grid-area: upload; width: 100%; grid-template-columns: auto minmax(0, 1fr); }" in html
+    assert ".upload-bar { grid-area: upload; width: 100%; flex-wrap: wrap; }" in html
     assert ".workspace { display: flex; flex-direction: column; height: auto; }" in html
     assert ".left-rail { max-height: 220px; border-width: 0 0 1px 0; }" in html
     assert ".result-tabs { overflow-x: auto; flex-wrap: nowrap; padding: 0 12px; }" in html
