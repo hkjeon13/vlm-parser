@@ -343,6 +343,9 @@ def test_render_page_includes_openrouter_model_controls():
 
     assert 'name="model"' in html
     assert '<option value="vision/model" selected>' in html
+    assert 'id="model-field"' in html
+    assert 'id="model-input"' not in html
+    assert "Model ID" not in html
     assert "Vision Model" in html
     assert "supports reasoning" in html
 

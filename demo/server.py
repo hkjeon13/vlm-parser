@@ -1001,7 +1001,7 @@ def render_page(
         <label>
           Model
           <select id="model-select">
-            <option value="">Manual / .env default</option>
+            <option value="{model_value}">Configured default ({model_value or "none"})</option>
             {model_options}
           </select>
         </label>
@@ -1009,13 +1009,17 @@ def render_page(
         if is_openrouter and openrouter_models
         else ""
     )
-    model_manual = f"""
+    model_field = f'<input id="model-field" name="model" type="hidden" value="{model_value}">'
+    model_manual = (
+        f"""
         <label>
           Model ID
           <input id="model-input" type="text" value="{model_value}" placeholder="provider/model-id">
-          <input id="model-field" name="model" type="hidden" value="{model_value}">
         </label>
     """
+        if not (is_openrouter and openrouter_models)
+        else ""
+    )
     result_section = ""
     if markdown or json_text:
         result_section = f"""
@@ -1934,6 +1938,7 @@ def render_page(
           <label class="check"><input name="use_vlm" type="checkbox"> Use VLM rewrite</label>
           {model_select}
           {model_manual}
+          {model_field}
           <button type="submit">실행</button>
         </div>
       </form>
@@ -2087,9 +2092,6 @@ def render_page(
       const selected = modelSelect?.value || '';
       const manual = modelInput?.value || '';
       modelField.value = selected || manual;
-      if (selected && modelInput) {{
-        modelInput.value = selected;
-      }}
     }}
 
     function formatSeconds(value) {{
@@ -2570,12 +2572,7 @@ def render_page(
     }});
 
     modelSelect?.addEventListener('change', syncModelField);
-    modelInput?.addEventListener('input', () => {{
-      if (modelSelect) {{
-        modelSelect.value = '';
-      }}
-      syncModelField();
-    }});
+    modelInput?.addEventListener('input', syncModelField);
 
     detailReparse?.addEventListener('click', async () => {{
       await parseSelectedFile();
