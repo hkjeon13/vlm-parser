@@ -1790,14 +1790,19 @@ def render_page(
       .upload-bar .options {{
         flex-wrap: wrap;
         justify-content: stretch;
-        align-items: end;
+        align-items: center;
+        gap: 8px;
       }}
       .upload-bar .options label:not(.check):has(select),
       .upload-bar .options label:not(.check):has(input[type="text"]) {{
-        flex: 1 1 220px;
+        flex: 1 1 100%;
         max-width: none;
       }}
-      .upload-bar .options label.check:nth-of-type(4) {{ min-width: 0; white-space: normal; }}
+      .upload-bar .options label.check {{
+        flex: 1 1 auto;
+        min-width: 0;
+        white-space: nowrap;
+      }}
       .upload-bar button[type="submit"] {{ flex: 0 0 auto; }}
       .workspace {{ display: flex; flex-direction: column; height: auto; }}
       .workspace.rail-collapsed .job-list {{ display: grid; }}
@@ -1823,6 +1828,13 @@ def render_page(
     @media (max-width: 430px) {{
       h1 {{ font-size: 15px; }}
       .topbar {{ grid-template-columns: 1fr; }}
+      .brand-mark {{ width: 34px; height: 34px; font-size: 19px; }}
+      .brand {{ grid-template-columns: 38px minmax(0, 1fr); gap: 10px; }}
+      .status span {{ overflow: hidden; text-overflow: ellipsis; }}
+      .upload-bar .options label:not(.check) {{
+        gap: 6px;
+        font-size: 11px;
+      }}
       .upload-bar button[type="submit"] {{ padding: 0 10px; }}
       .tab-download-links a {{ padding: 4px 7px; }}
     }}
