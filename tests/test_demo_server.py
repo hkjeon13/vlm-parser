@@ -322,6 +322,9 @@ def test_render_page_uses_document_workspace_layout():
     assert "파일을 드래그하여 업로드" not in html
     assert "upload-dropzone" not in html
     assert 'id="rail-upload-trigger"' in html
+    assert "account-pill" not in html
+    assert "Use VLM</label>" in html
+    assert "Use VLM rewrite" not in html
     assert "parse-step" not in html
     assert "pdf-controls" not in html
 

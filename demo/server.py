@@ -1085,7 +1085,7 @@ def render_page(
     }}
     .topbar {{
       display: grid;
-      grid-template-columns: minmax(260px, 330px) minmax(0, 1fr) 42px;
+      grid-template-columns: minmax(260px, 330px) minmax(0, 1fr);
       gap: 20px;
       align-items: center;
       margin: 0;
@@ -1251,16 +1251,6 @@ def render_page(
       background: var(--accent);
       color: #fff;
       padding: 0 14px;
-    }}
-    .account-pill {{
-      display: grid;
-      place-items: center;
-      width: 38px;
-      height: 38px;
-      border-radius: 999px;
-      background: var(--accent);
-      color: #fff;
-      font-weight: 850;
     }}
     label {{ display: grid; gap: 7px; font-weight: 650; }}
     input[type="file"], input[type="number"] {{
@@ -1796,7 +1786,6 @@ def render_page(
         padding: 10px 12px;
       }}
       .brand {{ grid-area: title; min-width: 0; }}
-      .account-pill {{ display: none; }}
       .upload-bar {{ grid-area: upload; width: 100%; flex-wrap: wrap; }}
       .upload-bar .options {{
         flex-wrap: wrap;
@@ -1861,11 +1850,10 @@ def render_page(
           {model_select}
           {model_manual}
           {model_field}
-          <label class="check"><input name="use_vlm" type="checkbox"> Use VLM rewrite</label>
+          <label class="check"><input name="use_vlm" type="checkbox"> Use VLM</label>
           <button type="submit">실행</button>
         </div>
       </form>
-      <div class="account-pill" aria-label="계정">A</div>
     </header>
     {error_section}
     {notice_section}
