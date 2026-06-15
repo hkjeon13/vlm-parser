@@ -312,12 +312,13 @@ def test_render_page_uses_document_workspace_layout():
     assert "left-rail" in html
     assert 'class="pdf-stage"' in html
     assert "result-panel" in html
-    assert "detail-panel" in html
+    assert "rail-detail" in html
+    assert "detail-panel" not in html
     assert "미리보기" in html
     assert "HTML" in html
     assert "JSON" in html
     assert "<h2>파일</h2>" in html
-    assert "<h2>파일 정보</h2>" in html
+    assert "<h2>선택 파일</h2>" in html
     assert "파일을 드래그하여 업로드" in html
     assert "parse-step" not in html
     assert "pdf-controls" not in html
@@ -354,8 +355,8 @@ def test_render_page_supports_collapsible_and_resizable_workspace():
     html = render_page(config=DemoConfig())
 
     assert "--rail-width: 310px" in html
-    assert "--detail-width: 300px" in html
-    assert "--content-width: calc((100% - var(--rail-width) - var(--detail-width) - 6px) / 2)" in html
+    assert "--detail-width" not in html
+    assert "--content-width: calc((100% - var(--rail-width) - 6px) / 2)" in html
     assert "--pdf-width: var(--content-width)" in html
     assert "--result-width: var(--content-width)" in html
     assert 'id="sidebar-toggle"' in html
@@ -365,7 +366,7 @@ def test_render_page_supports_collapsible_and_resizable_workspace():
     assert "workspace.classList.toggle('rail-collapsed')" in html
     assert "fitWorkspaceContentWidths()" in html
     assert "setPointerCapture(event.pointerId)" in html
-    assert "grid-template-columns: var(--rail-width) var(--pdf-width) 6px var(--result-width) var(--detail-width);" in html
+    assert "grid-template-columns: var(--rail-width) var(--pdf-width) 6px var(--result-width);" in html
     assert ".workspace.rail-collapsed" in html
 
 

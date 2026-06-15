@@ -1346,12 +1346,11 @@ def render_page(
     }}
     .workspace {{
       --rail-width: 310px;
-      --detail-width: 300px;
-      --content-width: calc((100% - var(--rail-width) - var(--detail-width) - 6px) / 2);
+      --content-width: calc((100% - var(--rail-width) - 6px) / 2);
       --pdf-width: var(--content-width);
       --result-width: var(--content-width);
       display: grid;
-      grid-template-columns: var(--rail-width) var(--pdf-width) 6px var(--result-width) var(--detail-width);
+      grid-template-columns: var(--rail-width) var(--pdf-width) 6px var(--result-width);
       gap: 0;
       align-items: stretch;
       min-height: 0;
@@ -1377,7 +1376,7 @@ def render_page(
     }}
     .left-rail {{
       display: grid;
-      grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+      grid-template-rows: auto auto minmax(0, 1fr) auto auto auto;
       border-width: 0 1px 0 0;
       border-radius: 0;
       background: #fbfcfd;
@@ -1671,56 +1670,60 @@ def render_page(
       color: var(--accent);
       transform: translateY(1px);
     }}
-    .detail-panel {{
-      min-width: 0;
-      border-left: 1px solid var(--line);
+    .rail-detail {{
+      display: grid;
+      gap: 8px;
+      border-top: 1px solid var(--line);
+      padding: 10px 12px;
       background: #fff;
-      padding: 22px 18px;
-      overflow: auto;
+    }}
+    .rail-detail h2 {{
+      margin: 0;
+      font-size: 13px;
     }}
     .detail-card,
     .action-card {{
       display: grid;
-      gap: 14px;
+      gap: 7px;
       border: 1px solid var(--line);
       border-radius: 8px;
       background: #fff;
-      padding: 16px;
-      margin-bottom: 18px;
-    }}
-    .detail-panel h2 {{
-      font-size: 15px;
-      margin-bottom: 12px;
+      padding: 9px;
     }}
     .detail-row {{
       display: grid;
-      gap: 4px;
+      gap: 2px;
       color: var(--muted);
       font-size: 12px;
     }}
     .detail-row strong {{
       color: var(--ink);
-      font-size: 14px;
+      font-size: 12px;
       overflow-wrap: anywhere;
     }}
     .action-list {{
       display: grid;
-      gap: 10px;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
     }}
     .action-list button,
     .action-list a {{
       display: flex;
       align-items: center;
       justify-content: space-between;
-      min-height: 42px;
+      min-height: 31px;
       border: 1px solid var(--line);
       border-radius: 7px;
       background: #fff;
       color: var(--ink);
-      padding: 9px 12px;
+      padding: 6px 8px;
       text-decoration: none;
       font: inherit;
+      font-size: 12px;
       font-weight: 750;
+    }}
+    .action-list .primary {{
+      grid-column: 1 / -1;
     }}
     .action-list button.primary {{
       border-color: transparent;
@@ -1890,7 +1893,7 @@ def render_page(
       .workspace.rail-collapsed .left-rail .badge {{ display: inline-flex; }}
       .workspace-resizer {{ display: none; }}
       .left-rail {{ max-height: 220px; border-width: 0 0 1px 0; }}
-      .upload-dropzone, .storage-meter, .detail-panel {{ display: none; }}
+      .upload-dropzone, .storage-meter, .rail-detail {{ display: none; }}
       .jobs header {{ padding: 10px 12px; }}
       .job-list {{ height: auto; max-height: 164px; }}
       .pdf-stage {{ min-height: 520px; border-right: 0; border-bottom: 1px solid var(--line); }}
@@ -1959,6 +1962,29 @@ def render_page(
         <div id="job-list" class="job-list">
           <div class="empty-state">No files yet.</div>
         </div>
+        <section class="rail-detail">
+          <h2>선택 파일</h2>
+          <div class="detail-card">
+            <div class="detail-row">
+              <span>파일명</span>
+              <strong id="detail-filename">선택된 파일 없음</strong>
+            </div>
+            <div class="detail-row">
+              <span>상태 / 페이지</span>
+              <strong><span id="detail-status">-</span> · <span id="detail-pages">-</span></strong>
+            </div>
+            <div class="detail-row">
+              <span>업로드 / 모델</span>
+              <strong><span id="detail-created">-</span> · <span id="detail-model">-</span></strong>
+            </div>
+          </div>
+          <div class="action-card action-list">
+            <button id="detail-reparse" class="primary" type="button">다시 파싱 <span>↻</span></button>
+            <a id="detail-export-json" href="#" aria-disabled="true">결과 <span>⌄</span></a>
+            <a id="detail-source-download" href="#" aria-disabled="true">원본 <span>⌄</span></a>
+            <button id="detail-delete" class="danger" type="button">삭제 <span>⌫</span></button>
+          </div>
+        </section>
         <button id="upload-trigger" class="upload-dropzone" type="button">
           <span aria-hidden="true">⇧</span>
           <strong>파일을 드래그하여 업로드</strong>
@@ -1992,38 +2018,6 @@ def render_page(
         </div>
         <div class="result-footer">Job ID: <span id="job-id-label">-</span></div>
       </section>
-      <aside class="detail-panel">
-        <h2>파일 정보</h2>
-        <div class="detail-card">
-          <div class="detail-row">
-            <span>파일명</span>
-            <strong id="detail-filename">선택된 파일 없음</strong>
-          </div>
-          <div class="detail-row">
-            <span>상태</span>
-            <strong id="detail-status">-</strong>
-          </div>
-          <div class="detail-row">
-            <span>페이지 수</span>
-            <strong id="detail-pages">-</strong>
-          </div>
-          <div class="detail-row">
-            <span>업로드 일시</span>
-            <strong id="detail-created">-</strong>
-          </div>
-          <div class="detail-row">
-            <span>모델</span>
-            <strong id="detail-model">-</strong>
-          </div>
-        </div>
-        <h2>작업</h2>
-        <div class="action-card action-list">
-          <button id="detail-reparse" class="primary" type="button">다시 파싱 <span>↻</span></button>
-          <a id="detail-export-json" href="#" aria-disabled="true">결과 내보내기 <span>⌄</span></a>
-          <a id="detail-source-download" href="#" aria-disabled="true">원본 다운로드 <span>⌄</span></a>
-          <button id="detail-delete" class="danger" type="button">파일 삭제 <span>⌫</span></button>
-        </div>
-      </aside>
     </section>
     {result_section}
   </main>
@@ -2240,8 +2234,7 @@ def render_page(
 
     function workspaceContentAvailable() {{
       const workspaceRect = workspace.getBoundingClientRect();
-      const detailWidth = document.querySelector('.detail-panel')?.getBoundingClientRect().width || 0;
-      return Math.max(680, workspaceRect.width - workspaceRailWidth() - detailWidth - 6);
+      return Math.max(680, workspaceRect.width - workspaceRailWidth() - 6);
     }}
 
     function fitWorkspaceContentWidths() {{
