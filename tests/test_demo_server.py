@@ -82,6 +82,26 @@ def test_job_store_can_mark_uploaded_job_queued(tmp_path: Path):
     assert queued.status == "queued"
 
 
+def test_job_store_tracks_parse_progress(tmp_path: Path):
+    store = JobStore(tmp_path)
+    job = store.create(
+        UploadedFile(filename="sample.pdf", content=b"%PDF-1.7"),
+        JobOptions(use_vlm=False, render_dpi=180, trim=True, auto_slice=True),
+    )
+
+    updated = store.update_progress(job.id, current=2, total=5, label="Parsed page 2 of 5")
+
+    assert updated is not None
+    assert updated.progress_current == 2
+    assert updated.progress_total == 5
+    assert updated.progress_percent == 40
+    summary = store.to_summary(updated)
+    assert summary["progress"]["current"] == 2
+    assert summary["progress"]["total"] == 5
+    assert summary["progress"]["percent"] == 40
+    assert summary["progress"]["label"] == "Parsed page 2 of 5"
+
+
 def test_process_job_stores_json_and_markdown_results(tmp_path: Path):
     store = JobStore(tmp_path)
     job = store.create(
@@ -97,16 +117,21 @@ def test_process_job_stores_json_and_markdown_results(tmp_path: Path):
             return "# Parsed"
 
     class FakeParser:
+        def __init__(self, progress_callback):
+            self.progress_callback = progress_callback
+
         def parse(self, source):
             assert Path(source) == job.source_path
+            self.progress_callback(1, 2, "Parsed page 1 of 2")
             return FakeResult()
 
-    def parser_factory(*, use_vlm, render_dpi, trim, auto_slice, config):
+    def parser_factory(*, use_vlm, render_dpi, trim, auto_slice, config, progress_callback=None):
         assert use_vlm is False
         assert render_dpi == 180
         assert trim is True
         assert auto_slice is True
-        return FakeParser()
+        assert progress_callback is not None
+        return FakeParser(progress_callback)
 
     process_job(
         job.id,
@@ -118,6 +143,7 @@ def test_process_job_stores_json_and_markdown_results(tmp_path: Path):
     completed = store.get(job.id)
     assert completed is not None
     assert completed.status == "done"
+    assert completed.progress_percent == 100
     assert completed.result_json == {"document": {"markdown": "# Parsed"}}
     assert completed.markdown == "# Parsed"
 
@@ -156,6 +182,16 @@ def test_render_page_places_download_actions_in_tab_bar():
     assert 'title="JSON 다운로드"' in html
     assert "job.links.markdown" in html
     assert "job.links.json" in html
+
+
+def test_render_page_shows_parse_progress():
+    html = render_page(config=DemoConfig())
+
+    assert "function progressBar(job) {" in html
+    assert 'class="progress-track"' in html
+    assert 'class="progress-fill"' in html
+    assert "const progress = job.progress || {};" in html
+    assert "progressBar(job)" in html
 
 
 def test_render_page_includes_mobile_friendly_layout_rules():

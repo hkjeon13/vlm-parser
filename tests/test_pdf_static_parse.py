@@ -23,6 +23,23 @@ def test_pdf_parser_extracts_static_text_to_json_and_markdown(tmp_path):
     assert "Hello PDF" in result.to_markdown()
 
 
+def test_pdf_parser_reports_page_progress(tmp_path):
+    pdf_path = tmp_path / "sample.pdf"
+    doc = fitz.open()
+    first = doc.new_page()
+    first.insert_text((72, 72), "First page")
+    second = doc.new_page()
+    second.insert_text((72, 72), "Second page")
+    doc.save(pdf_path)
+    doc.close()
+    progress = []
+
+    PdfParser(progress_callback=lambda current, total, label: progress.append((current, total, label))).parse(pdf_path)
+
+    assert progress[0] == (0, 2, "Preparing 2 pages")
+    assert progress[-1] == (2, 2, "Parsed page 2 of 2")
+
+
 class FakeVlmClient:
     def rewrite_chunk(self, request):
         return f"rewritten {request.static.text.strip()}"

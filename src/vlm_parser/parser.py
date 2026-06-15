@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from vlm_parser.core.models import ParseResult
 from vlm_parser.core.options import ParseOptions, VlmOptions
@@ -15,6 +15,7 @@ class PdfParser:
     options: ParseOptions = field(default_factory=ParseOptions)
     vlm: VlmOptions = field(default_factory=VlmOptions)
     vlm_client: Any = None
+    progress_callback: Callable[[int, int, str], None] | None = None
 
     def parse(self, source: str | Path) -> ParseResult:
         return Parser(
@@ -26,4 +27,5 @@ class PdfParser:
             options=self.options,
             vlm=self.vlm,
             vlm_client=self.vlm_client,
+            progress_callback=self.progress_callback,
         ).parse(source)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from vlm_parser.core.models import (
     DocumentResult,
@@ -23,11 +23,13 @@ class Parser:
         options: ParseOptions,
         vlm: VlmOptions,
         vlm_client: Any = None,
+        progress_callback: Callable[[int, int, str], None] | None = None,
     ):
         self.adapter = adapter
         self.options = options
         self.vlm = vlm
         self.vlm_client = vlm_client
+        self.progress_callback = progress_callback
 
     def parse(self, source: str | Path) -> ParseResult:
         source_path = Path(source)
@@ -36,6 +38,9 @@ class Parser:
             units = list(self.adapter.iter_units(document))
             metadata = self.adapter.get_metadata(document)
             pages: list[PageResult] = []
+            total_units = len(units)
+            if self.progress_callback is not None:
+                self.progress_callback(0, total_units, f"Preparing {total_units} pages")
 
             for unit in units:
                 static = self.adapter.extract_static(unit)
@@ -70,6 +75,12 @@ class Parser:
                         markdown=markdown,
                     )
                 )
+                if self.progress_callback is not None:
+                    self.progress_callback(
+                        len(pages),
+                        total_units,
+                        f"Parsed page {len(pages)} of {total_units}",
+                    )
 
             document_markdown = "\n\n".join(page.markdown for page in pages if page.markdown)
             return ParseResult(

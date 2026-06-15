@@ -61,6 +61,10 @@ class ParseJob:
     error: str = ""
     result_json: dict | None = None
     markdown: str = ""
+    progress_current: int = 0
+    progress_total: int = 0
+    progress_percent: int = 0
+    progress_label: str = ""
 
 
 class JobStore:
@@ -107,6 +111,8 @@ class JobStore:
             if job is None:
                 return None
             job.status = "running"
+            if not job.progress_label:
+                job.progress_label = "Starting parse"
             job.updated_at = time.time()
             return job
 
@@ -117,6 +123,24 @@ class JobStore:
                 return None
             job.status = "queued"
             job.error = ""
+            job.progress_current = 0
+            job.progress_total = 0
+            job.progress_percent = 0
+            job.progress_label = "Queued"
+            job.updated_at = time.time()
+            return job
+
+    def update_progress(self, job_id: str, *, current: int, total: int, label: str) -> ParseJob | None:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                return None
+            safe_total = max(total, 0)
+            safe_current = max(0, min(current, safe_total)) if safe_total else max(0, current)
+            job.progress_current = safe_current
+            job.progress_total = safe_total
+            job.progress_percent = int(round((safe_current / safe_total) * 100)) if safe_total else 0
+            job.progress_label = label
             job.updated_at = time.time()
             return job
 
@@ -129,6 +153,9 @@ class JobStore:
             job.result_json = result_json
             job.markdown = markdown
             job.error = ""
+            job.progress_current = job.progress_total or job.progress_current
+            job.progress_percent = 100
+            job.progress_label = "Complete"
             job.updated_at = time.time()
             return job
 
@@ -139,6 +166,7 @@ class JobStore:
                 return None
             job.status = "failed"
             job.error = error
+            job.progress_label = "Failed"
             job.updated_at = time.time()
             return job
 
@@ -155,6 +183,12 @@ class JobStore:
             "created_at": job.created_at,
             "updated_at": job.updated_at,
             "has_result": job.result_json is not None,
+            "progress": {
+                "current": job.progress_current,
+                "total": job.progress_total,
+                "percent": job.progress_percent,
+                "label": job.progress_label,
+            },
             "links": {
                 "self": f"/api/jobs/{job.id}",
                 "parse": f"/api/jobs/{job.id}/parse",
@@ -217,6 +251,7 @@ def make_parser(
     trim: bool,
     auto_slice: bool,
     config: DemoConfig,
+    progress_callback=None,
 ) -> PdfParser:
     vlm_client = build_vlm_client(config) if use_vlm else None
     return PdfParser(
@@ -233,6 +268,7 @@ def make_parser(
             timeout_seconds=120,
         ),
         vlm_client=vlm_client,
+        progress_callback=progress_callback,
     )
 
 
@@ -247,12 +283,16 @@ def process_job(
     if job is None:
         return
     try:
+        def report_progress(current: int, total: int, label: str) -> None:
+            store.update_progress(job.id, current=current, total=total, label=label)
+
         parser = parser_factory(
             use_vlm=job.options.use_vlm,
             render_dpi=job.options.render_dpi,
             trim=job.options.trim,
             auto_slice=job.options.auto_slice,
             config=config,
+            progress_callback=report_progress,
         )
         result = parser.parse(job.source_path)
         store.mark_done(job.id, result.to_json(), result.to_markdown())
@@ -888,6 +928,34 @@ def render_page(
     .badge.done {{ color: #0f6b3d; background: #eef9f1; border-color: #b8dfc2; }}
     .badge.failed {{ color: var(--error); background: #fff5f3; border-color: #f1a29b; }}
     .badge.running, .badge.queued {{ color: #73510a; background: #fff8e8; border-color: #edd28a; }}
+    .progress-block {{
+      display: grid;
+      gap: 6px;
+      width: 100%;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+    }}
+    .progress-track {{
+      width: 100%;
+      height: 8px;
+      border-radius: 99px;
+      overflow: hidden;
+      background: #dbe3ef;
+    }}
+    .progress-fill {{
+      height: 100%;
+      width: var(--progress, 0%);
+      min-width: 0;
+      border-radius: inherit;
+      background: var(--accent);
+      transition: width 0.2s ease;
+    }}
+    .progress-text {{
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+    }}
     .pdf-stage {{
       min-width: 0;
       min-height: 0;
@@ -1258,6 +1326,26 @@ def render_page(
       return `<span class="badge ${{escapeHtml(job.status)}}">${{escapeHtml(job.status)}}</span>`;
     }}
 
+    function progressBar(job) {{
+      const progress = job.progress || {{}};
+      const percent = Math.max(0, Math.min(100, Number(progress.percent || 0)));
+      const total = Number(progress.total || 0);
+      const current = Number(progress.current || 0);
+      const label = progress.label || (job.status === 'done' ? 'Complete' : 'Waiting');
+      const countText = total ? `${{current}} / ${{total}}` : '';
+      return `
+        <div class="progress-block" aria-label="Parse progress">
+          <div class="progress-track" aria-hidden="true">
+            <div class="progress-fill" style="--progress: ${{percent}}%"></div>
+          </div>
+          <div class="progress-text">
+            <span>${{escapeHtml(label)}}</span>
+            <span>${{escapeHtml(countText || `${{percent}}%`)}}</span>
+          </div>
+        </div>
+      `;
+    }}
+
     function pdfPreviewUrl(job) {{
       return `${{job.links.source_pdf}}#view=FitH&zoom=page-width&navpanes=0`;
     }}
@@ -1306,6 +1394,7 @@ def render_page(
         <button class="job-row ${{job.id === selectedJobId ? 'active' : ''}}" data-job-id="${{escapeHtml(job.id)}}">
           <strong>${{escapeHtml(job.filename)}}</strong>
           <span>${{statusLabel(job)}} VLM: ${{job.use_vlm ? 'on' : 'off'}} · DPI ${{job.render_dpi}}</span>
+          ${{['queued', 'running'].includes(job.status) ? progressBar(job) : ''}}
           ${{job.error ? `<span>${{escapeHtml(job.error)}}</span>` : ''}}
         </button>
       `).join('');
@@ -1338,7 +1427,12 @@ def render_page(
       if (job.status !== 'done') {{
         renderedResultKey = null;
         previewBody.className = 'result-body';
-        previewBody.innerHTML = `<div class="empty-state">Status: ${{escapeHtml(job.status)}}</div>`;
+        previewBody.innerHTML = `
+          <div class="empty-state">
+            <div>Status: ${{escapeHtml(job.status)}}</div>
+            ${{progressBar(job)}}
+          </div>
+        `;
         return;
       }}
       downloadLinks.innerHTML = `
