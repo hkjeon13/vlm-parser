@@ -314,8 +314,8 @@ def test_render_page_uses_document_workspace_layout():
     assert "result-panel" in html
     assert "rail-detail" in html
     assert "detail-panel" not in html
-    assert "미리보기" in html
-    assert "HTML" in html
+    assert "MD" in html
+    assert "미리보기" not in html
     assert "JSON" in html
     assert "<h2>파일</h2>" in html
     assert "<h2>선택 파일</h2>" in html
@@ -452,7 +452,7 @@ def test_render_page_displays_results_by_page():
     assert "function pageSeparatedMarkdown()" in html
     assert "selectedJson.pages" in html
     assert "page.page_number" in html
-    assert "Page ${escapeHtml(pageNumber)}" in html
+    assert "## Page ${pageNumber}" in html
 
 
 def test_render_page_keeps_result_scroll_stable_during_polling():

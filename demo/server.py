@@ -1969,8 +1969,7 @@ def render_page(
           <div id="download-links" class="download-links"></div>
         </div>
         <div class="result-tabs" role="tablist">
-          <button id="tab-preview" class="active" type="button" data-tab="preview">미리보기</button>
-          <button id="tab-html" type="button" data-tab="html">HTML</button>
+          <button id="tab-html" class="active" type="button" data-tab="html">MD</button>
           <button id="tab-json" type="button" data-tab="json">JSON</button>
           <div id="tab-download-links" class="tab-download-links"></div>
         </div>
@@ -2017,7 +2016,7 @@ def render_page(
     let renderedResultKey = null;
     let openMenuFileId = null;
     let activeResize = null;
-    let activeTab = 'preview';
+    let activeTab = 'html';
 
     function escapeHtml(value) {{
       return String(value ?? '').replace(/[&<>"']/g, (char) => ({{
@@ -2334,25 +2333,6 @@ def render_page(
         previewBody.innerHTML = `<pre>${{escapeHtml(pageSeparatedMarkdown())}}</pre>`;
         return;
       }}
-      previewBody.innerHTML = `
-        <div class="result-meta">
-          <span>${{escapeHtml(selectedJson?.pages?.length || 0)}} pages</span>
-          <span>time ${{escapeHtml(formatSeconds(selectedJson?.metrics?.total_seconds))}}</span>
-          <span>avg ${{escapeHtml(formatSeconds(selectedJson?.metrics?.average_seconds_per_page))}}/page</span>
-          <span>cost ${{escapeHtml(formatCost(selectedJson?.metrics?.cost_usd))}}</span>
-          <span>tokens ${{escapeHtml(selectedJson?.metrics?.total_tokens || 0)}}</span>
-        </div>
-        ${{(selectedJson?.pages || []).map((page, index) => {{
-          const pageNumber = page.page_number ?? page.unit_number ?? index + 1;
-          const markdown = page.markdown || page.static?.text || '';
-          return `
-            <section class="page-result">
-              <h3>Page ${{escapeHtml(pageNumber)}}</h3>
-              <pre>${{escapeHtml(markdown)}}</pre>
-            </section>
-          `;
-        }}).join('') || `<pre>${{escapeHtml(selectedMarkdown)}}</pre>`}}
-      `;
     }}
 
     async function uploadSelectedFile() {{
