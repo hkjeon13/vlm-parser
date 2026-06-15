@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+import time
 from typing import Any, Callable
 
 from vlm_parser.core.models import (
     DocumentResult,
+    PageMetrics,
     PageResult,
+    ParseMetrics,
     ParseResult,
     ParserInfo,
     SourceInfo,
@@ -32,6 +35,7 @@ class Parser:
         self.progress_callback = progress_callback
 
     def parse(self, source: str | Path) -> ParseResult:
+        parse_started_at = time.perf_counter()
         source_path = Path(source)
         document = self.adapter.open(source_path)
         try:
@@ -43,6 +47,7 @@ class Parser:
                 self.progress_callback(0, total_units, f"Preparing {total_units} pages")
 
             for unit in units:
+                page_started_at = time.perf_counter()
                 static = self.adapter.extract_static(unit)
                 page = unit.native
                 render = self.adapter.render(unit)
@@ -60,6 +65,9 @@ class Parser:
                         chunks=render.chunks,
                     )
                     markdown = vlm_result.markdown
+                page_metrics = PageMetrics(
+                    parse_seconds=time.perf_counter() - page_started_at,
+                )
                 pages.append(
                     PageResult(
                         unit_id=unit.unit_id,
@@ -72,6 +80,7 @@ class Parser:
                         static=static,
                         render=render,
                         vlm=vlm_result,
+                        metrics=page_metrics,
                         markdown=markdown,
                     )
                 )
@@ -83,6 +92,8 @@ class Parser:
                     )
 
             document_markdown = "\n\n".join(page.markdown for page in pages if page.markdown)
+            total_seconds = time.perf_counter() - parse_started_at
+            token_totals = _vlm_token_totals(pages)
             return ParseResult(
                 source=SourceInfo(
                     path=str(source_path),
@@ -103,6 +114,33 @@ class Parser:
                 },
                 document=DocumentResult(markdown=document_markdown, metadata=metadata),
                 pages=pages,
+                metrics=ParseMetrics(
+                    total_seconds=total_seconds,
+                    page_count=len(pages),
+                    average_seconds_per_page=total_seconds / len(pages) if pages else 0.0,
+                    prompt_tokens=token_totals["prompt_tokens"],
+                    completion_tokens=token_totals["completion_tokens"],
+                    total_tokens=token_totals["total_tokens"],
+                    reasoning_tokens=token_totals["reasoning_tokens"],
+                ),
             )
         finally:
             self.adapter.close(document)
+
+
+def _vlm_token_totals(pages: list[PageResult]) -> dict[str, int]:
+    totals = {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+    }
+    for page in pages:
+        if page.vlm is None:
+            continue
+        for chunk in page.vlm.chunks:
+            totals["prompt_tokens"] += chunk.usage.prompt_tokens
+            totals["completion_tokens"] += chunk.usage.completion_tokens
+            totals["total_tokens"] += chunk.usage.total_tokens
+            totals["reasoning_tokens"] += chunk.usage.reasoning_tokens
+    return totals

@@ -163,11 +163,11 @@ VLM rewriting을 테스트하려면 저장소 루트의 `.env`에 다음 값을 
 
 ```bash
 MODEL_API_KEY=<API_KEY>
-MODEL_NAME=qwen/qwen3.7-plus
-MODEL_BASE_URL=https://openrouter.ai/api/v1/chat/completions
+MODEL_NAME=google/gemini-2.5-flash
+MODEL_BASE_URL=https://openrouter.ai/api/v1
 ```
 
-`MODEL_BASE_URL`은 OpenAI-compatible chat completions endpoint 전체 URL을 넣어도 데모 서버가 client base URL로 정규화합니다.
+`MODEL_BASE_URL`이 `https://openrouter.ai/api/v1`이면 데모가 OpenRouter 모델 목록에서 image input을 지원하는 text-output 모델을 불러와 선택 UI를 표시합니다. 완료된 job에는 총 파싱 시간, 페이지당 평균 시간, token 사용량, OpenRouter pricing 기반 API 비용이 함께 표시됩니다. 다른 OpenAI-compatible base URL을 쓰는 경우에는 모델 ID를 수동으로 사용하며 비용 계산은 생략됩니다.
 
 데모 서버는 같은 기능을 API로도 제공합니다.
 

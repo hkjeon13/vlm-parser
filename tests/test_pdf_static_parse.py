@@ -21,6 +21,10 @@ def test_pdf_parser_extracts_static_text_to_json_and_markdown(tmp_path):
     assert data["pages"][0]["render"]["original"]["width_px"] > 0
     assert data["pages"][0]["render"]["chunks"][0]["id"] == "p1-c1"
     assert "Hello PDF" in result.to_markdown()
+    assert data["metrics"]["total_seconds"] >= 0
+    assert data["metrics"]["page_count"] == 1
+    assert data["metrics"]["average_seconds_per_page"] >= 0
+    assert data["pages"][0]["metrics"]["parse_seconds"] >= 0
 
 
 def test_pdf_parser_reports_page_progress(tmp_path):

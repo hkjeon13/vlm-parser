@@ -7,9 +7,11 @@ from typing import Protocol
 
 import httpx
 
+from vlm_parser.core.models import VlmClientResponse
+
 
 class VlmClient(Protocol):
-    def rewrite_chunk(self, request: object) -> str:
+    def rewrite_chunk(self, request: object) -> str | VlmClientResponse:
         """Return Markdown for one chunk request."""
 
 
@@ -21,7 +23,7 @@ class OpenAICompatibleVlmClient:
     http_client: object | None = None
     timeout_seconds: float = 60.0
 
-    def rewrite_chunk(self, request: object) -> str:
+    def rewrite_chunk(self, request: object) -> VlmClientResponse:
         client = self.http_client or httpx.Client()
         response = client.post(
             f"{self.base_url.rstrip('/')}/chat/completions",
@@ -34,7 +36,15 @@ class OpenAICompatibleVlmClient:
         )
         response.raise_for_status()
         data = response.json()
-        return data["choices"][0]["message"]["content"]
+        usage = data.get("usage") or {}
+        return VlmClientResponse(
+            markdown=data["choices"][0]["message"]["content"],
+            prompt_tokens=int(usage.get("prompt_tokens") or 0),
+            completion_tokens=int(usage.get("completion_tokens") or 0),
+            total_tokens=int(usage.get("total_tokens") or 0),
+            reasoning_tokens=_reasoning_tokens_from_usage(usage),
+            raw_usage=usage,
+        )
 
     def _payload(self, request: object) -> dict:
         chunk = request.chunk
@@ -66,3 +76,14 @@ class OpenAICompatibleVlmClient:
                 }
             ],
         }
+
+
+def _reasoning_tokens_from_usage(usage: dict) -> int:
+    details = usage.get("completion_tokens_details") or {}
+    if isinstance(details, dict):
+        return int(
+            details.get("reasoning_tokens")
+            or details.get("internal_reasoning_tokens")
+            or 0
+        )
+    return int(usage.get("reasoning_tokens") or usage.get("internal_reasoning_tokens") or 0)

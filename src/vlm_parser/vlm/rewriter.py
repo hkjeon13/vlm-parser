@@ -5,7 +5,9 @@ from dataclasses import dataclass
 from vlm_parser.core.models import (
     RenderChunk,
     StaticUnitResult,
+    VlmClientResponse,
     VlmChunkResult,
+    VlmUsage,
     VlmUnitResult,
 )
 from vlm_parser.vlm.client import VlmClient
@@ -33,6 +35,9 @@ class VlmRewriter:
         static: StaticUnitResult,
         chunks: list[RenderChunk],
     ) -> VlmUnitResult:
+        import time
+
+        started_at = time.perf_counter()
         previous_markdown = ""
         results: list[VlmChunkResult] = []
 
@@ -45,8 +50,26 @@ class VlmRewriter:
                 model=self.model,
             )
             with self.limiter:
-                markdown = self.client.rewrite_chunk(request)
-            results.append(VlmChunkResult(chunk_id=chunk.id, status="success", markdown=markdown))
+                response = self.client.rewrite_chunk(request)
+            if isinstance(response, VlmClientResponse):
+                markdown = response.markdown
+                usage = VlmUsage(
+                    prompt_tokens=response.prompt_tokens,
+                    completion_tokens=response.completion_tokens,
+                    total_tokens=response.total_tokens,
+                    reasoning_tokens=response.reasoning_tokens,
+                )
+            else:
+                markdown = response
+                usage = VlmUsage()
+            results.append(
+                VlmChunkResult(
+                    chunk_id=chunk.id,
+                    status="success",
+                    markdown=markdown,
+                    usage=usage,
+                )
+            )
             previous_markdown = markdown
 
         page_markdown = "\n\n".join(result.markdown for result in results if result.markdown)
@@ -56,4 +79,5 @@ class VlmRewriter:
             model=self.model,
             chunks=results,
             markdown=page_markdown,
+            elapsed_seconds=time.perf_counter() - started_at,
         )

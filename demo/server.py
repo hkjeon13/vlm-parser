@@ -10,7 +10,7 @@ import tempfile
 import threading
 import time
 import traceback
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from email import policy
 from email.parser import BytesParser
 from http import HTTPStatus
@@ -18,6 +18,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 from uuid import uuid4
+
+import httpx
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -29,11 +31,33 @@ from vlm_parser import ParseOptions, PdfParser, VlmOptions  # noqa: E402
 from vlm_parser.vlm.client import OpenAICompatibleVlmClient  # noqa: E402
 
 
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
+
 @dataclass(frozen=True, slots=True)
 class DemoConfig:
     api_key: str = ""
     model: str = ""
     base_url: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class OpenRouterPricing:
+    prompt: float = 0.0
+    completion: float = 0.0
+    request: float = 0.0
+    image: float = 0.0
+    internal_reasoning: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class OpenRouterModel:
+    id: str
+    name: str
+    context_length: int = 0
+    pricing: OpenRouterPricing = field(default_factory=OpenRouterPricing)
+    supports_reasoning: bool = False
+    supports_include_reasoning: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +72,7 @@ class JobOptions:
     render_dpi: int
     trim: bool
     auto_slice: bool
+    model: str = ""
 
 
 @dataclass(slots=True)
@@ -281,6 +306,7 @@ class JobStore:
         }
 
     def to_summary(self, job: ParseJob) -> dict:
+        metrics = job.result_json.get("metrics", {}) if job.result_json else {}
         return {
             "id": job.id,
             "file_id": job.file_id,
@@ -288,9 +314,18 @@ class JobStore:
             "status": job.status,
             "error": job.error,
             "use_vlm": job.options.use_vlm,
+            "model": job.options.model,
             "render_dpi": job.options.render_dpi,
             "trim": job.options.trim,
             "auto_slice": job.options.auto_slice,
+            "metrics": {
+                "total_seconds": metrics.get("total_seconds"),
+                "average_seconds_per_page": metrics.get("average_seconds_per_page"),
+                "cost_usd": metrics.get("cost_usd"),
+                "prompt_tokens": metrics.get("prompt_tokens"),
+                "completion_tokens": metrics.get("completion_tokens"),
+                "reasoning_tokens": metrics.get("reasoning_tokens"),
+            },
             "created_at": job.created_at,
             "updated_at": job.updated_at,
             "has_result": job.result_json is not None,
@@ -341,6 +376,125 @@ def normalize_model_base_url(base_url: str) -> str:
     if cleaned.endswith(suffix):
         return cleaned[: -len(suffix)]
     return cleaned
+
+
+def is_openrouter_base_url(base_url: str) -> bool:
+    return normalize_model_base_url(base_url) == OPENROUTER_BASE_URL
+
+
+def _float_price(value: object) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _openrouter_pricing(data: dict) -> OpenRouterPricing:
+    pricing = data.get("pricing") or {}
+    return OpenRouterPricing(
+        prompt=_float_price(pricing.get("prompt")),
+        completion=_float_price(pricing.get("completion")),
+        request=_float_price(pricing.get("request")),
+        image=_float_price(pricing.get("image")),
+        internal_reasoning=_float_price(pricing.get("internal_reasoning")),
+    )
+
+
+def _openrouter_model_from_payload(data: dict) -> OpenRouterModel:
+    supported = set(data.get("supported_parameters") or [])
+    return OpenRouterModel(
+        id=str(data.get("id") or ""),
+        name=str(data.get("name") or data.get("id") or ""),
+        context_length=int(data.get("context_length") or 0),
+        pricing=_openrouter_pricing(data),
+        supports_reasoning="reasoning" in supported,
+        supports_include_reasoning="include_reasoning" in supported,
+    )
+
+
+def fetch_openrouter_models(http_client: object | None = None) -> list[OpenRouterModel]:
+    client = http_client or httpx.Client()
+    response = client.get(
+        f"{OPENROUTER_BASE_URL}/models?output_modalities=text",
+        timeout=10,
+    )
+    response.raise_for_status()
+    models: list[OpenRouterModel] = []
+    for item in response.json().get("data", []):
+        architecture = item.get("architecture") or {}
+        input_modalities = set(architecture.get("input_modalities") or [])
+        output_modalities = set(architecture.get("output_modalities") or [])
+        if "image" not in input_modalities or "text" not in output_modalities:
+            continue
+        model = _openrouter_model_from_payload(item)
+        if model.id:
+            models.append(model)
+    return sorted(models, key=lambda model: model.name.lower())
+
+
+def safe_fetch_openrouter_models(config: DemoConfig) -> list[OpenRouterModel]:
+    if not is_openrouter_base_url(config.base_url):
+        return []
+    try:
+        return fetch_openrouter_models()
+    except Exception:
+        return []
+
+
+def find_openrouter_model(models: list[OpenRouterModel], model_id: str) -> OpenRouterModel | None:
+    for model in models:
+        if model.id == model_id:
+            return model
+    return None
+
+
+def calculate_openrouter_cost(result_json: dict, model: OpenRouterModel) -> dict:
+    prompt_tokens = 0
+    completion_tokens = 0
+    total_tokens = 0
+    reasoning_tokens = 0
+    request_count = 0
+    for page in result_json.get("pages") or []:
+        vlm = page.get("vlm") or {}
+        for chunk in vlm.get("chunks") or []:
+            usage = chunk.get("usage") or {}
+            prompt_tokens += int(usage.get("prompt_tokens") or 0)
+            completion_tokens += int(usage.get("completion_tokens") or 0)
+            total_tokens += int(usage.get("total_tokens") or 0)
+            reasoning_tokens += int(usage.get("reasoning_tokens") or 0)
+            request_count += 1
+
+    pricing = model.pricing
+    total_cost = (
+        prompt_tokens * pricing.prompt
+        + completion_tokens * pricing.completion
+        + reasoning_tokens * pricing.internal_reasoning
+        + request_count * pricing.request
+        + request_count * pricing.image
+    )
+    return {
+        "provider": "openrouter",
+        "model": model.id,
+        "request_count": request_count,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
+        "reasoning_tokens": reasoning_tokens,
+        "total_cost_usd": round(total_cost, 10),
+    }
+
+
+def add_openrouter_cost_metrics(result_json: dict, config: DemoConfig) -> None:
+    if not is_openrouter_base_url(config.base_url) or not config.model:
+        return
+    models = safe_fetch_openrouter_models(config)
+    model = find_openrouter_model(models, config.model)
+    if model is None:
+        return
+    cost = calculate_openrouter_cost(result_json, model)
+    metrics = result_json.setdefault("metrics", {})
+    metrics["cost_usd"] = cost["total_cost_usd"]
+    metrics["openrouter"] = cost
 
 
 def build_vlm_client(config: DemoConfig) -> OpenAICompatibleVlmClient | None:
@@ -396,16 +550,23 @@ def process_job(
         def report_progress(current: int, total: int, label: str) -> None:
             store.update_progress(job.id, current=current, total=total, label=label)
 
+        effective_config = DemoConfig(
+            api_key=config.api_key,
+            model=job.options.model or config.model,
+            base_url=config.base_url,
+        )
         parser = parser_factory(
             use_vlm=job.options.use_vlm,
             render_dpi=job.options.render_dpi,
             trim=job.options.trim,
             auto_slice=job.options.auto_slice,
-            config=config,
+            config=effective_config,
             progress_callback=report_progress,
         )
         result = parser.parse(job.source_path)
-        store.mark_done(job.id, result.to_json(), result.to_markdown())
+        result_json = result.to_json()
+        add_openrouter_cost_metrics(result_json, effective_config)
+        store.mark_done(job.id, result_json, result.to_markdown())
     except Exception as exc:
         traceback.print_exc()
         store.mark_failed(job.id, f"{type(exc).__name__}: {exc}")
@@ -471,7 +632,12 @@ class DemoHandler(BaseHTTPRequestHandler):
             self.send_error(HTTPStatus.NOT_FOUND)
             return
         config = load_demo_config(ROOT_DIR / ".env")
-        self._send_html(render_page(config=config))
+        self._send_html(
+            render_page(
+                config=config,
+                openrouter_models=safe_fetch_openrouter_models(config),
+            )
+        )
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
@@ -537,7 +703,12 @@ class DemoHandler(BaseHTTPRequestHandler):
             fields, _uploaded = self._parse_multipart()
             options = _job_options_from_fields(fields)
             config = load_demo_config(ROOT_DIR / ".env")
-            if options.use_vlm and build_vlm_client(config) is None:
+            effective_config = DemoConfig(
+                api_key=config.api_key,
+                model=options.model or config.model,
+                base_url=config.base_url,
+            )
+            if options.use_vlm and build_vlm_client(effective_config) is None:
                 self._send_json(
                     {"error": ".env에 MODEL_API_KEY, MODEL_NAME, MODEL_BASE_URL을 모두 설정해야 VLM을 사용할 수 있습니다."},
                     status=HTTPStatus.BAD_REQUEST,
@@ -584,7 +755,12 @@ class DemoHandler(BaseHTTPRequestHandler):
                 return
 
             config = load_demo_config(ROOT_DIR / ".env")
-            if job.options.use_vlm and build_vlm_client(config) is None:
+            effective_config = DemoConfig(
+                api_key=config.api_key,
+                model=job.options.model or config.model,
+                base_url=config.base_url,
+            )
+            if job.options.use_vlm and build_vlm_client(effective_config) is None:
                 self._send_json(
                     {"error": ".env에 MODEL_API_KEY, MODEL_NAME, MODEL_BASE_URL을 모두 설정해야 VLM을 사용할 수 있습니다."},
                     status=HTTPStatus.BAD_REQUEST,
@@ -783,6 +959,7 @@ def _job_options_from_fields(fields: dict[str, str]) -> JobOptions:
         render_dpi=_int_field(fields.get("render_dpi", "180"), default=180),
         trim=fields.get("trim", "off") == "on",
         auto_slice=fields.get("auto_slice", "off") == "on",
+        model=fields.get("model", "").strip(),
     )
 
 
@@ -795,8 +972,10 @@ def render_page(
     error: str = "",
     notice: str = "",
     used_vlm: bool = False,
+    openrouter_models: list[OpenRouterModel] | None = None,
 ) -> str:
     config = config or DemoConfig()
+    openrouter_models = openrouter_models or []
     has_vlm_config = bool(config.api_key and config.model and config.base_url)
     escaped_markdown = html.escape(markdown)
     escaped_json = html.escape(json_text)
@@ -804,7 +983,39 @@ def render_page(
     escaped_notice = html.escape(notice)
     escaped_filename = html.escape(filename)
     model_label = html.escape(config.model or "not configured")
+    model_value = html.escape(config.model)
     vlm_status = "ready" if has_vlm_config else "missing .env values"
+    is_openrouter = is_openrouter_base_url(config.base_url)
+    model_options = "\n".join(
+        (
+            f'<option value="{html.escape(model.id)}"'
+            f'{" selected" if model.id == config.model else ""}>'
+            f'{html.escape(model.name)} ({html.escape(model.id)})'
+            f'{" · supports reasoning" if model.supports_reasoning else ""}'
+            f'</option>'
+        )
+        for model in openrouter_models
+    )
+    model_select = (
+        f"""
+        <label>
+          Model
+          <select id="model-select">
+            <option value="">Manual / .env default</option>
+            {model_options}
+          </select>
+        </label>
+        """
+        if is_openrouter and openrouter_models
+        else ""
+    )
+    model_manual = f"""
+        <label>
+          Model ID
+          <input id="model-input" type="text" value="{model_value}" placeholder="provider/model-id">
+          <input id="model-field" name="model" type="hidden" value="{model_value}">
+        </label>
+    """
     result_section = ""
     if markdown or json_text:
         result_section = f"""
@@ -1500,6 +1711,8 @@ def render_page(
         <label class="check"><input name="trim" type="checkbox" checked> Trim margins</label>
         <label class="check"><input name="auto_slice" type="checkbox" checked> Auto slice pages</label>
         <label class="check"><input name="use_vlm" type="checkbox"> Use VLM rewrite</label>
+        {model_select}
+        {model_manual}
         <button type="submit">실행</button>
       </div>
     </form>
@@ -1543,6 +1756,9 @@ def render_page(
   </main>
   <script>
     const form = document.getElementById('upload-form');
+    const modelSelect = document.getElementById('model-select');
+    const modelInput = document.getElementById('model-input');
+    const modelField = document.getElementById('model-field');
     const uploadTrigger = document.getElementById('upload-trigger');
     const fileInput = document.getElementById('pdf-input');
     const selectedFileName = document.getElementById('selected-file-name');
@@ -1587,6 +1803,52 @@ def render_page(
       return `<span class="badge ${{escapeHtml(job.status)}}">${{escapeHtml(job.status)}}</span>`;
     }}
 
+    function syncModelField() {{
+      if (!modelField) {{
+        return;
+      }}
+      const selected = modelSelect?.value || '';
+      const manual = modelInput?.value || '';
+      modelField.value = selected || manual;
+      if (selected && modelInput) {{
+        modelInput.value = selected;
+      }}
+    }}
+
+    function formatSeconds(value) {{
+      const number = Number(value);
+      if (!Number.isFinite(number)) {{
+        return '-';
+      }}
+      return `${{number.toFixed(2)}}s`;
+    }}
+
+    function formatCost(value) {{
+      const number = Number(value);
+      if (!Number.isFinite(number)) {{
+        return '-';
+      }}
+      return `$${{number.toFixed(6)}}`;
+    }}
+
+    function compactMetrics(job) {{
+      const metrics = job?.metrics || {{}};
+      const parts = [];
+      if (job?.model) {{
+        parts.push(job.model);
+      }}
+      if (metrics.cost_usd !== null && metrics.cost_usd !== undefined) {{
+        parts.push(formatCost(metrics.cost_usd));
+      }}
+      if (metrics.total_seconds !== null && metrics.total_seconds !== undefined) {{
+        parts.push(formatSeconds(metrics.total_seconds));
+      }}
+      if (metrics.average_seconds_per_page !== null && metrics.average_seconds_per_page !== undefined) {{
+        parts.push(`${{formatSeconds(metrics.average_seconds_per_page)}}/page`);
+      }}
+      return parts.join(' · ');
+    }}
+
     function progressBar(job) {{
       const progress = job.progress || {{}};
       const percent = Math.max(0, Math.min(100, Number(progress.percent || 0)));
@@ -1612,7 +1874,8 @@ def render_page(
       if (!job) {{
         return `${{statusLabel(null)}} ${{escapeHtml(file.job_count)}} runs`;
       }}
-      return `${{statusLabel(job)}} ${{escapeHtml(file.job_count)}} runs · VLM: ${{job.use_vlm ? 'on' : 'off'}} · DPI ${{job.render_dpi}}`;
+      const metrics = compactMetrics(job);
+      return `${{statusLabel(job)}} ${{escapeHtml(file.job_count)}} runs · VLM: ${{job.use_vlm ? 'on' : 'off'}} · DPI ${{job.render_dpi}}${{metrics ? ` · ${{escapeHtml(metrics)}}` : ''}}`;
     }}
 
     function pdfPreviewUrl(file) {{
@@ -1763,6 +2026,7 @@ def render_page(
       }}
       if (job.status !== 'done') {{
         renderedResultKey = null;
+        tabDownloadLinks.innerHTML = '';
         previewBody.className = 'result-body';
         previewBody.innerHTML = `
           <div class="empty-state">
@@ -1770,6 +2034,9 @@ def render_page(
             ${{progressBar(job)}}
           </div>
         `;
+        return;
+      }}
+      if (renderedResultKey === resultRenderKey(job)) {{
         return;
       }}
       tabDownloadLinks.innerHTML = `
@@ -1780,9 +2047,6 @@ def render_page(
           <span aria-hidden="true">↓</span><span>JSON</span>
         </a>
       `;
-      if (renderedResultKey === resultRenderKey(job)) {{
-        return;
-      }}
       const markdownResponse = await fetch(job.links.markdown);
       selectedMarkdown = await markdownResponse.text();
       const jsonResponse = await fetch(job.links.json);
@@ -1810,6 +2074,10 @@ def render_page(
       previewBody.innerHTML = `
         <div class="result-meta">
           <span>${{escapeHtml(selectedJson?.pages?.length || 0)}} pages</span>
+          <span>time ${{escapeHtml(formatSeconds(selectedJson?.metrics?.total_seconds))}}</span>
+          <span>avg ${{escapeHtml(formatSeconds(selectedJson?.metrics?.average_seconds_per_page))}}/page</span>
+          <span>cost ${{escapeHtml(formatCost(selectedJson?.metrics?.cost_usd))}}</span>
+          <span>tokens ${{escapeHtml(selectedJson?.metrics?.total_tokens || 0)}}</span>
         </div>
         ${{(selectedJson?.pages || []).map((page, index) => {{
           const pageNumber = page.page_number ?? page.unit_number ?? index + 1;
@@ -1834,6 +2102,7 @@ def render_page(
       uploadTrigger.disabled = true;
       uploadTrigger.textContent = '업로드 중...';
       try {{
+        syncModelField();
         const response = await fetch('/api/files', {{
           method: 'POST',
           body: new FormData(form)
@@ -1848,6 +2117,7 @@ def render_page(
         selectedFileName.textContent = '선택된 파일 없음';
         form.querySelector('input[name="trim"]').checked = true;
         form.querySelector('input[name="auto_slice"]').checked = true;
+        syncModelField();
         await refreshFiles();
       }} catch (error) {{
         previewBody.className = 'result-body';
@@ -1869,6 +2139,7 @@ def render_page(
       button.disabled = true;
       button.textContent = '실행 중...';
       try {{
+        syncModelField();
         const response = await fetch(selectedFile.links.parse, {{
           method: 'POST',
           body: new FormData(form)
@@ -1979,6 +2250,14 @@ def render_page(
       fileInput.click();
     }});
 
+    modelSelect?.addEventListener('change', syncModelField);
+    modelInput?.addEventListener('input', () => {{
+      if (modelSelect) {{
+        modelSelect.value = '';
+      }}
+      syncModelField();
+    }});
+
     fileInput.addEventListener('change', async () => {{
       selectedFileName.textContent = fileInput.files.length
         ? fileInput.files[0].name
@@ -2028,6 +2307,7 @@ def render_page(
       }});
     }});
 
+    syncModelField();
     refreshFiles();
     setInterval(refreshFiles, 2000);
 

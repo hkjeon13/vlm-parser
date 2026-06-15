@@ -1,4 +1,4 @@
-from vlm_parser.core.models import RenderChunk, StaticUnitResult
+from vlm_parser.core.models import RenderChunk, StaticUnitResult, VlmClientResponse
 from vlm_parser.vlm.client import OpenAICompatibleVlmClient
 from vlm_parser.vlm.concurrency import GlobalVlmLimiter
 from vlm_parser.vlm.rewriter import VlmChunkRequest, VlmRewriter
@@ -34,6 +34,39 @@ def test_vlm_rewriter_processes_chunks_sequentially_with_previous_context():
     assert result.markdown == "markdown-c1\n\nmarkdown-c2"
 
 
+class UsageRecordingClient:
+    def rewrite_chunk(self, request: VlmChunkRequest) -> VlmClientResponse:
+        return VlmClientResponse(
+            markdown=f"markdown-{request.chunk.id}",
+            prompt_tokens=10,
+            completion_tokens=5,
+            total_tokens=15,
+            reasoning_tokens=2,
+        )
+
+
+def test_vlm_rewriter_preserves_usage_from_client_response():
+    rewriter = VlmRewriter(
+        client=UsageRecordingClient(),
+        limiter=GlobalVlmLimiter(max_concurrency=1),
+        model="model-a",
+    )
+    chunks = [
+        RenderChunk("c1", 0, "c1.png", [0, 0, 100, 50], [0, 0, 100, 50], "end", 50),
+    ]
+
+    result = rewriter.rewrite_unit(
+        unit_id="p1",
+        static=StaticUnitResult(text="raw text"),
+        chunks=chunks,
+    )
+
+    assert result.chunks[0].usage.prompt_tokens == 10
+    assert result.chunks[0].usage.completion_tokens == 5
+    assert result.chunks[0].usage.total_tokens == 15
+    assert result.chunks[0].usage.reasoning_tokens == 2
+
+
 class FakeHttpClient:
     def __init__(self):
         self.request = None
@@ -53,7 +86,15 @@ class FakeResponse:
         return None
 
     def json(self):
-        return {"choices": [{"message": {"content": "rewritten markdown"}}]}
+        return {
+            "choices": [{"message": {"content": "rewritten markdown"}}],
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 20,
+                "total_tokens": 125,
+                "completion_tokens_details": {"reasoning_tokens": 5},
+            },
+        }
 
 
 def test_openai_compatible_client_posts_chat_completion_payload(tmp_path):
@@ -75,9 +116,13 @@ def test_openai_compatible_client_posts_chat_completion_payload(tmp_path):
         model="vision-model",
     )
 
-    markdown = client.rewrite_chunk(request)
+    response = client.rewrite_chunk(request)
 
-    assert markdown == "rewritten markdown"
+    assert response.markdown == "rewritten markdown"
+    assert response.prompt_tokens == 100
+    assert response.completion_tokens == 20
+    assert response.total_tokens == 125
+    assert response.reasoning_tokens == 5
     assert http_client.request["url"] == "https://api.example.com/v1/chat/completions"
     assert http_client.request["headers"]["Authorization"] == "Bearer key"
     assert http_client.request["json"]["model"] == "vision-model"

@@ -131,6 +131,17 @@ class VlmUsage:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    reasoning_tokens: int = 0
+
+
+@dataclass(slots=True)
+class VlmClientResponse:
+    markdown: str
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    reasoning_tokens: int = 0
+    raw_usage: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -149,6 +160,24 @@ class VlmUnitResult:
     model: str | None
     chunks: list[VlmChunkResult] = field(default_factory=list)
     markdown: str = ""
+    elapsed_seconds: float = 0.0
+
+
+@dataclass(slots=True)
+class PageMetrics:
+    parse_seconds: float = 0.0
+
+
+@dataclass(slots=True)
+class ParseMetrics:
+    total_seconds: float = 0.0
+    page_count: int = 0
+    average_seconds_per_page: float = 0.0
+    cost_usd: float | None = None
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    reasoning_tokens: int = 0
 
 
 @dataclass(slots=True)
@@ -164,6 +193,7 @@ class PageResult:
     unit_type: str = "page"
     render: RenderResult | None = None
     vlm: VlmUnitResult | None = None
+    metrics: PageMetrics = field(default_factory=PageMetrics)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -174,6 +204,7 @@ class ParseResult:
     pages: list[PageResult]
     schema_version: str = "0.1"
     options: dict[str, Any] = field(default_factory=dict)
+    metrics: ParseMetrics = field(default_factory=ParseMetrics)
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 

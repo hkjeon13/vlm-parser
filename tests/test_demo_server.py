@@ -6,10 +6,15 @@ from demo.server import (
     DemoConfig,
     JobOptions,
     JobStore,
+    OpenRouterModel,
+    OpenRouterPricing,
     UploadedFile,
     api_index_payload,
     build_vlm_client,
+    calculate_openrouter_cost,
     content_disposition_header,
+    fetch_openrouter_models,
+    is_openrouter_base_url,
     source_pdf_link,
     load_demo_config,
     normalize_model_base_url,
@@ -46,6 +51,118 @@ def test_normalize_model_base_url_accepts_chat_completions_endpoint():
     assert normalized == "https://openrouter.ai/api/v1"
 
 
+def test_is_openrouter_base_url_only_accepts_openrouter_api_root():
+    assert is_openrouter_base_url("https://openrouter.ai/api/v1") is True
+    assert is_openrouter_base_url("https://openrouter.ai/api/v1/chat/completions") is True
+    assert is_openrouter_base_url("https://api.example.com/v1") is False
+
+
+class FakeModelsHttpClient:
+    def __init__(self):
+        self.request = None
+
+    def get(self, url, timeout):
+        self.request = {"url": url, "timeout": timeout}
+        return FakeModelsResponse()
+
+
+class FakeModelsResponse:
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return {
+            "data": [
+                {
+                    "id": "text/model",
+                    "name": "Text Model",
+                    "context_length": 4096,
+                    "architecture": {
+                        "input_modalities": ["text"],
+                        "output_modalities": ["text"],
+                    },
+                    "pricing": {"prompt": "0.000001", "completion": "0.000002"},
+                    "supported_parameters": ["temperature"],
+                },
+                {
+                    "id": "vision/model",
+                    "name": "Vision Model",
+                    "context_length": 8192,
+                    "architecture": {
+                        "input_modalities": ["text", "image"],
+                        "output_modalities": ["text"],
+                    },
+                    "pricing": {
+                        "prompt": "0.000001",
+                        "completion": "0.000002",
+                        "request": "0.0001",
+                        "image": "0.0003",
+                        "internal_reasoning": "0.000004",
+                    },
+                    "supported_parameters": ["reasoning", "include_reasoning"],
+                },
+            ]
+        }
+
+
+def test_fetch_openrouter_models_filters_to_vision_text_models():
+    http_client = FakeModelsHttpClient()
+
+    models = fetch_openrouter_models(http_client=http_client)
+
+    assert http_client.request["url"] == "https://openrouter.ai/api/v1/models?output_modalities=text"
+    assert [model.id for model in models] == ["vision/model"]
+    assert models[0].supports_reasoning is True
+    assert models[0].pricing.image == 0.0003
+
+
+def test_calculate_openrouter_cost_uses_usage_and_pricing():
+    result_json = {
+        "pages": [
+            {
+                "vlm": {
+                    "chunks": [
+                        {
+                            "usage": {
+                                "prompt_tokens": 100,
+                                "completion_tokens": 50,
+                                "reasoning_tokens": 10,
+                            }
+                        },
+                        {
+                            "usage": {
+                                "prompt_tokens": 25,
+                                "completion_tokens": 5,
+                                "reasoning_tokens": 0,
+                            }
+                        },
+                    ]
+                }
+            }
+        ]
+    }
+    model = OpenRouterModel(
+        id="vision/model",
+        name="Vision Model",
+        context_length=8192,
+        pricing=OpenRouterPricing(
+            prompt=0.01,
+            completion=0.02,
+            request=0.5,
+            image=0.25,
+            internal_reasoning=0.03,
+        ),
+    )
+
+    metrics = calculate_openrouter_cost(result_json, model)
+
+    assert metrics["request_count"] == 2
+    assert metrics["prompt_tokens"] == 125
+    assert metrics["completion_tokens"] == 55
+    assert metrics["reasoning_tokens"] == 10
+    assert metrics["total_cost_usd"] == 4.15
+
+
 def test_build_vlm_client_returns_none_when_config_is_incomplete():
     config = DemoConfig(api_key="", model="qwen/qwen3.7-plus", base_url="")
 
@@ -58,7 +175,7 @@ def test_job_store_creates_uploaded_job_with_uploaded_pdf(tmp_path: Path):
     file = store.create_file(UploadedFile(filename="sample.pdf", content=b"%PDF-1.7"))
     job = store.create_job(
         file.id,
-        JobOptions(use_vlm=False, render_dpi=180, trim=True, auto_slice=True),
+        JobOptions(use_vlm=False, render_dpi=180, trim=True, auto_slice=True, model=""),
     )
 
     assert job.status == "uploaded"
@@ -67,6 +184,7 @@ def test_job_store_creates_uploaded_job_with_uploaded_pdf(tmp_path: Path):
     assert store.get(job.id) == job
     assert store.list()[0].id == job.id
     assert store.to_summary(job)["status"] == "uploaded"
+    assert store.to_summary(job)["model"] == ""
     assert store.to_summary(job)["links"]["source_pdf"].endswith("/sample.pdf")
     assert store.to_file_summary(file)["latest_job"]["id"] == job.id
 
@@ -77,11 +195,11 @@ def test_job_store_allows_multiple_parse_jobs_for_one_uploaded_file(tmp_path: Pa
 
     static_job = store.create_job(
         file.id,
-        JobOptions(use_vlm=False, render_dpi=180, trim=True, auto_slice=True),
+        JobOptions(use_vlm=False, render_dpi=180, trim=True, auto_slice=True, model=""),
     )
     vlm_job = store.create_job(
         file.id,
-        JobOptions(use_vlm=True, render_dpi=180, trim=True, auto_slice=True),
+        JobOptions(use_vlm=True, render_dpi=180, trim=True, auto_slice=True, model="vision/model"),
     )
 
     assert static_job.id != vlm_job.id
@@ -95,7 +213,7 @@ def test_job_store_deletes_uploaded_file_and_its_jobs(tmp_path: Path):
     file = store.create_file(UploadedFile(filename="sample.pdf", content=b"%PDF-1.7"))
     job = store.create_job(
         file.id,
-        JobOptions(use_vlm=False, render_dpi=180, trim=True, auto_slice=True),
+        JobOptions(use_vlm=False, render_dpi=180, trim=True, auto_slice=True, model=""),
     )
 
     assert store.delete_file(file.id) is True
@@ -110,7 +228,7 @@ def test_job_store_can_mark_uploaded_job_queued(tmp_path: Path):
     file = store.create_file(UploadedFile(filename="sample.pdf", content=b"%PDF-1.7"))
     job = store.create_job(
         file.id,
-        JobOptions(use_vlm=False, render_dpi=180, trim=True, auto_slice=True),
+        JobOptions(use_vlm=False, render_dpi=180, trim=True, auto_slice=True, model=""),
     )
 
     queued = store.mark_queued(job.id)
@@ -123,7 +241,7 @@ def test_job_store_tracks_parse_progress(tmp_path: Path):
     store = JobStore(tmp_path)
     job = store.create(
         UploadedFile(filename="sample.pdf", content=b"%PDF-1.7"),
-        JobOptions(use_vlm=False, render_dpi=180, trim=True, auto_slice=True),
+        JobOptions(use_vlm=False, render_dpi=180, trim=True, auto_slice=True, model=""),
     )
 
     updated = store.update_progress(job.id, current=2, total=5, label="Parsed page 2 of 5")
@@ -144,7 +262,7 @@ def test_process_job_stores_json_and_markdown_results(tmp_path: Path):
     file = store.create_file(UploadedFile(filename="sample.pdf", content=b"%PDF-1.7"))
     job = store.create_job(
         file.id,
-        JobOptions(use_vlm=False, render_dpi=180, trim=True, auto_slice=True),
+        JobOptions(use_vlm=False, render_dpi=180, trim=True, auto_slice=True, model=""),
     )
 
     class FakeResult:
@@ -168,6 +286,7 @@ def test_process_job_stores_json_and_markdown_results(tmp_path: Path):
         assert render_dpi == 180
         assert trim is True
         assert auto_slice is True
+        assert config.model == ""
         assert progress_callback is not None
         return FakeParser(progress_callback)
 
@@ -199,6 +318,30 @@ def test_render_page_uses_three_pane_review_layout():
     assert "<h2>Files</h2>" in html
     assert "parse-step" not in html
     assert "pdf-controls" not in html
+
+
+def test_render_page_includes_openrouter_model_controls():
+    html = render_page(
+        config=DemoConfig(
+            api_key="key",
+            model="vision/model",
+            base_url="https://openrouter.ai/api/v1",
+        ),
+        openrouter_models=[
+            OpenRouterModel(
+                id="vision/model",
+                name="Vision Model",
+                context_length=8192,
+                pricing=OpenRouterPricing(prompt=0.000001, completion=0.000002),
+                supports_reasoning=True,
+            )
+        ],
+    )
+
+    assert 'name="model"' in html
+    assert '<option value="vision/model" selected>' in html
+    assert "Vision Model" in html
+    assert "supports reasoning" in html
 
 
 def test_render_page_supports_collapsible_and_resizable_workspace():
@@ -310,6 +453,15 @@ def test_render_page_keeps_result_scroll_stable_during_polling():
     assert "function resultRenderKey(job) {" in html
     assert "if (renderedResultKey === resultRenderKey(job)) {" in html
     assert "renderedResultKey = resultRenderKey(selectedJob);" in html
+
+
+def test_render_page_keeps_download_buttons_stable_during_polling():
+    html = render_page(config=DemoConfig())
+
+    stable_check = html.index("if (renderedResultKey === resultRenderKey(job)) {")
+    download_update = html.index("tabDownloadLinks.innerHTML = `")
+
+    assert stable_check < download_update
 
 
 def test_render_page_embeds_valid_javascript(tmp_path: Path):
