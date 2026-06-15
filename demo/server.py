@@ -1036,9 +1036,10 @@ def render_page(
       overflow-wrap: anywhere;
     }}
     .workspace {{
-      --rail-width: 33.333%;
-      --pdf-width: 33.333%;
-      --result-width: 33.333%;
+      --rail-width: 260px;
+      --content-width: calc((100% - var(--rail-width) - 6px) / 2);
+      --pdf-width: var(--content-width);
+      --result-width: var(--content-width);
       display: grid;
       grid-template-columns: var(--rail-width) var(--pdf-width) 6px var(--result-width);
       gap: 0;
@@ -1655,16 +1656,35 @@ def render_page(
       workspace.style.setProperty('--result-width', `${{Math.round(resultWidth)}}px`);
     }}
 
+    function workspaceRailWidth() {{
+      return workspace.classList.contains('rail-collapsed')
+        ? 44
+        : workspace.querySelector('.left-rail')?.getBoundingClientRect().width || 0;
+    }}
+
+    function workspaceContentAvailable() {{
+      const workspaceRect = workspace.getBoundingClientRect();
+      return Math.max(680, workspaceRect.width - workspaceRailWidth() - 6);
+    }}
+
+    function fitWorkspaceContentWidths() {{
+      if (!workspace) {{
+        return;
+      }}
+      const pdfWidth = document.querySelector('.pdf-stage')?.getBoundingClientRect().width || 1;
+      const resultWidth = document.querySelector('.result-panel')?.getBoundingClientRect().width || 1;
+      const ratio = clamp(pdfWidth / Math.max(pdfWidth + resultWidth, 1), 0.3, 0.7);
+      const available = workspaceContentAvailable();
+      setWorkspaceWidths(available * ratio, available * (1 - ratio));
+    }}
+
     function resizePdfResult(clientX) {{
       if (!workspace) {{
         return;
       }}
       const workspaceRect = workspace.getBoundingClientRect();
-      const railWidth = workspace.classList.contains('rail-collapsed')
-        ? 44
-        : workspace.querySelector('.left-rail')?.getBoundingClientRect().width || 0;
-      const available = Math.max(680, workspaceRect.width - railWidth - 6);
-      const relativeX = clientX - workspaceRect.left - railWidth;
+      const available = workspaceContentAvailable();
+      const relativeX = clientX - workspaceRect.left - workspaceRailWidth();
       const pdfWidth = clamp(relativeX, 320, available - 360);
       setWorkspaceWidths(pdfWidth, available - pdfWidth);
     }}
@@ -1922,6 +1942,7 @@ def render_page(
       sidebarToggle.textContent = collapsed ? '›' : '‹';
       sidebarToggle.setAttribute('aria-label', collapsed ? 'Files 사이드바 펼치기' : 'Files 사이드바 접기');
       sidebarToggle.setAttribute('title', collapsed ? 'Files 사이드바 펼치기' : 'Files 사이드바 접기');
+      fitWorkspaceContentWidths();
     }});
 
     workspaceResizers.forEach((resizer) => {{

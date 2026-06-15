@@ -204,14 +204,16 @@ def test_render_page_uses_three_pane_review_layout():
 def test_render_page_supports_collapsible_and_resizable_workspace():
     html = render_page(config=DemoConfig())
 
-    assert "--rail-width: 33.333%" in html
-    assert "--pdf-width: 33.333%" in html
-    assert "--result-width: 33.333%" in html
+    assert "--rail-width: 260px" in html
+    assert "--content-width: calc((100% - var(--rail-width) - 6px) / 2)" in html
+    assert "--pdf-width: var(--content-width)" in html
+    assert "--result-width: var(--content-width)" in html
     assert 'id="sidebar-toggle"' in html
     assert 'aria-label="Files 사이드바 접기"' in html
     assert 'class="workspace-resizer"' in html
     assert 'data-resizer="pdf-result"' in html
     assert "workspace.classList.toggle('rail-collapsed')" in html
+    assert "fitWorkspaceContentWidths()" in html
     assert "setPointerCapture(event.pointerId)" in html
     assert "grid-template-columns: var(--rail-width) var(--pdf-width) 6px var(--result-width);" in html
     assert ".workspace.rail-collapsed" in html
