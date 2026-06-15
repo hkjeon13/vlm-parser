@@ -1076,21 +1076,40 @@ def render_page(
       display: grid;
       grid-template-rows: auto minmax(0, 1fr);
       height: 100vh;
-      min-width: 1080px;
+      min-width: 1280px;
       overflow: hidden;
     }}
     .topbar {{
       display: grid;
-      grid-template-columns: 220px minmax(0, 1fr);
-      gap: 18px;
+      grid-template-columns: 330px minmax(0, 1fr) 42px;
+      gap: 24px;
       align-items: center;
       margin: 0;
-      min-height: 76px;
-      padding: 10px 18px;
+      min-height: 86px;
+      padding: 14px 26px;
       border-bottom: 1px solid var(--line);
-      background: #fbfcfd;
+      background: #fff;
     }}
     .brand {{
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+      min-width: 0;
+    }}
+    .brand-mark {{
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      border: 2px solid var(--accent);
+      border-radius: 7px;
+      color: var(--accent);
+      font-size: 22px;
+      font-weight: 900;
+      line-height: 1;
+    }}
+    .brand-copy {{
       display: grid;
       gap: 4px;
       min-width: 0;
@@ -1103,27 +1122,30 @@ def render_page(
       margin-bottom: 20px;
     }}
     h1, h2 {{ margin: 0; letter-spacing: 0; }}
-    h1 {{ font-size: 16px; line-height: 1.05; }}
+    h1 {{ font-size: 17px; line-height: 1.05; }}
     h2 {{ font-size: 16px; }}
     .status {{
       display: flex;
       align-items: center;
       gap: 8px;
       min-width: 0;
-      color: var(--muted);
+      color: var(--accent);
       font-size: 12px;
+      font-weight: 750;
       line-height: 1.2;
     }}
     .status strong {{
-      display: block;
-      max-width: 150px;
-      overflow: hidden;
-      color: var(--ink);
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      display: none;
     }}
     .status span {{
       white-space: nowrap;
+    }}
+    .status::after {{
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: var(--accent);
     }}
     form {{
       display: grid;
@@ -1136,9 +1158,9 @@ def render_page(
       margin-bottom: 16px;
     }}
     .upload-bar {{
-      display: grid;
-      grid-template-columns: auto minmax(90px, 150px) minmax(0, 1fr);
+      display: flex;
       align-items: end;
+      justify-content: flex-end;
       margin: 0;
       border: 0;
       border-radius: 0;
@@ -1169,7 +1191,7 @@ def render_page(
       pointer-events: none;
     }}
     .selected-file-name {{
-      max-width: 150px;
+      max-width: 180px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -1182,20 +1204,22 @@ def render_page(
       align-items: end;
       justify-content: flex-end;
       flex-wrap: nowrap;
-      gap: 6px 10px;
+      gap: 12px;
       min-width: 0;
+      width: 100%;
     }}
     .upload-bar .options > * {{
       min-width: 0;
-    }}
-    .upload-bar .options > label:first-child {{
-      display: none;
     }}
     .upload-bar .field-options {{
       display: none;
     }}
     .upload-bar .check {{
       display: none;
+    }}
+    .upload-bar .options > label:first-child {{
+      display: grid;
+      flex: 0 0 86px;
     }}
     .upload-bar .options label.check:nth-of-type(4) {{
       display: flex;
@@ -1206,6 +1230,13 @@ def render_page(
       font-size: 12px;
       font-weight: 750;
       white-space: nowrap;
+    }}
+    .upload-bar input[type="number"] {{
+      height: 34px;
+      padding: 4px 8px;
+      border-color: transparent;
+      background: transparent;
+      font-size: 14px;
     }}
     .upload-bar .options label:not(.check) {{
       display: grid;
@@ -1227,24 +1258,34 @@ def render_page(
     .upload-bar input[type="text"] {{
       width: 100%;
       min-width: 0;
-      height: 28px;
+      height: 36px;
       border: 1px solid #cbd5e1;
       border-radius: 6px;
       background: #fff;
       color: var(--ink);
       font: inherit;
-      font-size: 12px;
-      padding: 3px 8px;
+      font-size: 13px;
+      padding: 4px 10px;
     }}
     .upload-bar button[type="submit"] {{
       min-height: 36px;
-      min-width: 64px;
+      min-width: 68px;
       flex: 0 0 auto;
       justify-self: end;
       border-radius: 7px;
       background: var(--accent);
       color: #fff;
       padding: 0 14px;
+    }}
+    .account-pill {{
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      border-radius: 999px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 850;
     }}
     label {{ display: grid; gap: 7px; font-weight: 650; }}
     input[type="file"], input[type="number"] {{
@@ -1300,12 +1341,13 @@ def render_page(
       overflow-wrap: anywhere;
     }}
     .workspace {{
-      --rail-width: 260px;
-      --content-width: calc((100% - var(--rail-width) - 6px) / 2);
+      --rail-width: 310px;
+      --detail-width: 300px;
+      --content-width: calc((100% - var(--rail-width) - var(--detail-width) - 6px) / 2);
       --pdf-width: var(--content-width);
       --result-width: var(--content-width);
       display: grid;
-      grid-template-columns: var(--rail-width) var(--pdf-width) 6px var(--result-width);
+      grid-template-columns: var(--rail-width) var(--pdf-width) 6px var(--result-width) var(--detail-width);
       gap: 0;
       align-items: stretch;
       min-height: 0;
@@ -1330,9 +1372,11 @@ def render_page(
       overflow: hidden;
     }}
     .left-rail {{
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr) auto auto;
       border-width: 0 1px 0 0;
       border-radius: 0;
-      background: #f8fafc;
+      background: #fbfcfd;
       min-height: 0;
     }}
     .jobs header {{
@@ -1379,10 +1423,61 @@ def render_page(
       display: grid;
       align-content: start;
       max-height: none;
-      height: 100%;
+      height: auto;
       overflow: auto;
       padding: 12px;
       gap: 8px;
+    }}
+    .rail-search {{
+      margin: 12px;
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--ink);
+      padding: 8px 12px;
+      font: inherit;
+      font-size: 13px;
+    }}
+    .upload-dropzone {{
+      display: grid;
+      place-items: center;
+      gap: 8px;
+      margin: auto 16px 18px;
+      min-height: 126px;
+      border: 1px dashed #b9c2d0;
+      border-radius: 14px;
+      background: #fff;
+      color: var(--muted);
+      text-align: center;
+      font-size: 13px;
+    }}
+    .upload-dropzone strong {{
+      color: var(--ink);
+      font-size: 14px;
+    }}
+    .storage-meter {{
+      display: grid;
+      gap: 8px;
+      padding: 0 16px 18px;
+      color: var(--muted);
+      font-size: 12px;
+    }}
+    .storage-meter span {{
+      color: var(--ink);
+      font-weight: 750;
+    }}
+    .storage-bar {{
+      height: 7px;
+      border-radius: 999px;
+      background: #e5e7eb;
+      overflow: hidden;
+    }}
+    .storage-bar div {{
+      width: 16%;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--accent);
     }}
     .job-row {{
       position: relative;
@@ -1398,7 +1493,7 @@ def render_page(
       padding: 11px 10px 11px 14px;
     }}
     .job-row:hover {{ background: #fff; }}
-    .job-row.active {{ background: #eef2ff; border-color: #8b8cff; box-shadow: inset 3px 0 0 #5b5cf6; }}
+    .job-row.active {{ background: #eefaf7; border-color: #95d5c8; box-shadow: inset 3px 0 0 var(--accent); }}
     .file-row-main {{
       display: grid;
       min-width: 0;
@@ -1497,8 +1592,9 @@ def render_page(
     .pdf-stage {{
       min-width: 0;
       min-height: 0;
-      background: #cfd7e3;
+      background: #f3f6fa;
       border-right: 1px solid var(--line);
+      padding: 22px 18px;
     }}
     .pdf-canvas {{
       width: 100%;
@@ -1507,6 +1603,9 @@ def render_page(
       overflow: hidden;
       padding: 0;
       display: grid;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
     }}
     .pdf-empty {{
       align-self: center;
@@ -1565,8 +1664,67 @@ def render_page(
     .result-tabs button.active {{
       background: #fff;
       border-color: var(--line);
-      color: var(--ink);
+      color: var(--accent);
       transform: translateY(1px);
+    }}
+    .detail-panel {{
+      min-width: 0;
+      border-left: 1px solid var(--line);
+      background: #fff;
+      padding: 22px 18px;
+      overflow: auto;
+    }}
+    .detail-card,
+    .action-card {{
+      display: grid;
+      gap: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 16px;
+      margin-bottom: 18px;
+    }}
+    .detail-panel h2 {{
+      font-size: 15px;
+      margin-bottom: 12px;
+    }}
+    .detail-row {{
+      display: grid;
+      gap: 4px;
+      color: var(--muted);
+      font-size: 12px;
+    }}
+    .detail-row strong {{
+      color: var(--ink);
+      font-size: 14px;
+      overflow-wrap: anywhere;
+    }}
+    .action-list {{
+      display: grid;
+      gap: 10px;
+    }}
+    .action-list button,
+    .action-list a {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fff;
+      color: var(--ink);
+      padding: 9px 12px;
+      text-decoration: none;
+      font: inherit;
+      font-weight: 750;
+    }}
+    .action-list button.primary {{
+      border-color: transparent;
+      background: var(--accent);
+      color: #fff;
+    }}
+    .action-list button.danger {{
+      color: var(--error);
     }}
     .tab-download-links {{
       margin-left: auto;
@@ -1728,6 +1886,7 @@ def render_page(
       .workspace.rail-collapsed .left-rail .badge {{ display: inline-flex; }}
       .workspace-resizer {{ display: none; }}
       .left-rail {{ max-height: 220px; border-width: 0 0 1px 0; }}
+      .upload-dropzone, .storage-meter, .detail-panel {{ display: none; }}
       .jobs header {{ padding: 10px 12px; }}
       .job-list {{ height: auto; max-height: 164px; }}
       .pdf-stage {{ min-height: 520px; border-right: 0; border-bottom: 1px solid var(--line); }}
@@ -1754,16 +1913,17 @@ def render_page(
   <main class="app-shell">
     <header class="topbar">
       <div class="brand">
-        <h1>vlm-parser demo</h1>
-        <div class="status">
-          <strong>{model_label}</strong>
-          <span>VLM config: {vlm_status}</span>
+        <div class="brand-mark" aria-hidden="true">▣</div>
+        <div class="brand-copy">
+          <h1>VLM Parser Demo</h1>
+          <div class="status">
+            <strong>{model_label}</strong>
+            <span>VLM config: {vlm_status}</span>
+          </div>
         </div>
       </div>
       <form id="upload-form" class="upload-bar" action="/api/files" method="post" enctype="multipart/form-data">
-        <button id="upload-trigger" class="upload-button" type="button">업로드</button>
         <input id="pdf-input" name="pdf" type="file" accept="application/pdf,.pdf">
-        <span id="selected-file-name" class="selected-file-name">선택된 파일 없음</span>
         <div class="options">
           <label>
             Render DPI
@@ -1777,6 +1937,7 @@ def render_page(
           <button type="submit">실행</button>
         </div>
       </form>
+      <div class="account-pill" aria-label="계정">A</div>
     </header>
     {error_section}
     {notice_section}
@@ -1785,12 +1946,23 @@ def render_page(
         <header>
           <div class="rail-title">
             <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Files 사이드바 접기" title="Files 사이드바 접기">‹</button>
-            <h2>Files</h2>
+            <h2>파일</h2>
           </div>
-          <span id="job-count" class="badge">0</span>
+          <button class="file-menu-button" type="button" title="파일 메뉴" aria-label="파일 메뉴">...</button>
         </header>
+        <input class="rail-search" type="search" placeholder="파일명 검색" aria-label="파일명 검색">
         <div id="job-list" class="job-list">
           <div class="empty-state">No files yet.</div>
+        </div>
+        <button id="upload-trigger" class="upload-dropzone" type="button">
+          <span aria-hidden="true">⇧</span>
+          <strong>파일을 드래그하여 업로드</strong>
+          <span id="selected-file-name" class="selected-file-name">PDF, PNG, JPG (최대 100MB)</span>
+        </button>
+        <div class="storage-meter">
+          <span>저장소 사용량</span>
+          <div>1.24 GB / 10 GB</div>
+          <div class="storage-bar" aria-hidden="true"><div></div></div>
         </div>
       </aside>
       <section class="pdf-stage">
@@ -1815,6 +1987,38 @@ def render_page(
         </div>
         <div class="result-footer">Job ID: <span id="job-id-label">-</span></div>
       </section>
+      <aside class="detail-panel">
+        <h2>파일 정보</h2>
+        <div class="detail-card">
+          <div class="detail-row">
+            <span>파일명</span>
+            <strong id="detail-filename">선택된 파일 없음</strong>
+          </div>
+          <div class="detail-row">
+            <span>상태</span>
+            <strong id="detail-status">-</strong>
+          </div>
+          <div class="detail-row">
+            <span>페이지 수</span>
+            <strong id="detail-pages">-</strong>
+          </div>
+          <div class="detail-row">
+            <span>업로드 일시</span>
+            <strong id="detail-created">-</strong>
+          </div>
+          <div class="detail-row">
+            <span>모델</span>
+            <strong id="detail-model">-</strong>
+          </div>
+        </div>
+        <h2>작업</h2>
+        <div class="action-card action-list">
+          <button id="detail-reparse" class="primary" type="button">다시 파싱 <span>↻</span></button>
+          <a id="detail-export-json" href="#" aria-disabled="true">결과 내보내기 <span>⌄</span></a>
+          <a id="detail-source-download" href="#" aria-disabled="true">원본 다운로드 <span>⌄</span></a>
+          <button id="detail-delete" class="danger" type="button">파일 삭제 <span>⌫</span></button>
+        </div>
+      </aside>
     </section>
     {result_section}
   </main>
@@ -1837,6 +2041,15 @@ def render_page(
     const previewBody = document.getElementById('preview-body');
     const pdfCanvas = document.getElementById('pdf-canvas');
     const jobIdLabel = document.getElementById('job-id-label');
+    const detailFilename = document.getElementById('detail-filename');
+    const detailStatus = document.getElementById('detail-status');
+    const detailPages = document.getElementById('detail-pages');
+    const detailCreated = document.getElementById('detail-created');
+    const detailModel = document.getElementById('detail-model');
+    const detailReparse = document.getElementById('detail-reparse');
+    const detailExportJson = document.getElementById('detail-export-json');
+    const detailSourceDownload = document.getElementById('detail-source-download');
+    const detailDelete = document.getElementById('detail-delete');
     const tabButtons = Array.from(document.querySelectorAll('[data-tab]'));
     let selectedFileId = null;
     let selectedJobId = null;
@@ -1895,6 +2108,20 @@ def render_page(
       return `$${{number.toFixed(6)}}`;
     }}
 
+    function formatDateTime(value) {{
+      const number = Number(value);
+      if (!Number.isFinite(number) || number <= 0) {{
+        return '-';
+      }}
+      return new Date(number * 1000).toLocaleString('ko-KR', {{
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      }});
+    }}
+
     function compactMetrics(job) {{
       const metrics = job?.metrics || {{}};
       const parts = [];
@@ -1940,6 +2167,26 @@ def render_page(
       }}
       const metrics = compactMetrics(job);
       return `${{statusLabel(job)}} ${{escapeHtml(file.job_count)}} runs · VLM: ${{job.use_vlm ? 'on' : 'off'}} · DPI ${{job.render_dpi}}${{metrics ? ` · ${{escapeHtml(metrics)}}` : ''}}`;
+    }}
+
+    function updateDetailPanel(file, job) {{
+      if (!detailFilename) {{
+        return;
+      }}
+      const pages = selectedJson?.pages?.length || job?.progress?.total || '-';
+      detailFilename.textContent = file?.filename || '선택된 파일 없음';
+      detailStatus.textContent = job?.status || (file ? 'uploaded' : '-');
+      detailPages.textContent = pages;
+      detailCreated.textContent = formatDateTime(file?.created_at);
+      detailModel.textContent = job?.model || '-';
+      if (detailExportJson) {{
+        detailExportJson.href = job?.links?.json || '#';
+        detailExportJson.setAttribute('aria-disabled', job?.links?.json ? 'false' : 'true');
+      }}
+      if (detailSourceDownload) {{
+        detailSourceDownload.href = file?.links?.source_pdf || '#';
+        detailSourceDownload.setAttribute('aria-disabled', file?.links?.source_pdf ? 'false' : 'true');
+      }}
     }}
 
     function pdfPreviewUrl(file) {{
@@ -1991,7 +2238,8 @@ def render_page(
 
     function workspaceContentAvailable() {{
       const workspaceRect = workspace.getBoundingClientRect();
-      return Math.max(680, workspaceRect.width - workspaceRailWidth() - 6);
+      const detailWidth = document.querySelector('.detail-panel')?.getBoundingClientRect().width || 0;
+      return Math.max(680, workspaceRect.width - workspaceRailWidth() - detailWidth - 6);
     }}
 
     function fitWorkspaceContentWidths() {{
@@ -2020,7 +2268,9 @@ def render_page(
       const response = await fetch('/api/files');
       const data = await response.json();
       const files = data.files || [];
-      jobCount.textContent = String(files.length);
+      if (jobCount) {{
+        jobCount.textContent = String(files.length);
+      }}
       if (!files.length) {{
         selectedFileId = null;
         selectedJobId = null;
@@ -2029,6 +2279,7 @@ def render_page(
         jobList.innerHTML = '<div class="empty-state">No files yet.</div>';
         selectedTitle.textContent = 'Select a file';
         jobIdLabel.textContent = '-';
+        updateDetailPanel(null, null);
         return;
       }}
       if (!selectedFileId || !files.some((file) => file.id === selectedFileId)) {{
@@ -2073,15 +2324,18 @@ def render_page(
         jobIdLabel.textContent = '-';
         previewBody.className = 'result-body';
         previewBody.innerHTML = '<div class="empty-state">업로드 완료. 실행을 누르면 이 파일의 새 파싱을 시작합니다.</div>';
+        updateDetailPanel(file, null);
         return;
       }}
       selectedJobId = job.id;
+      updateDetailPanel(file, job);
       await renderJob(job);
     }}
 
     async function renderJob(job) {{
       selectedJob = job;
       jobIdLabel.textContent = job.id;
+      updateDetailPanel(selectedFile, job);
       if (job.status === 'failed') {{
         renderedResultKey = null;
         previewBody.className = 'result-body';
@@ -2115,6 +2369,7 @@ def render_page(
       selectedMarkdown = await markdownResponse.text();
       const jsonResponse = await fetch(job.links.json);
       selectedJson = await jsonResponse.json();
+      updateDetailPanel(selectedFile, job);
       renderResultTab();
     }}
 
@@ -2178,7 +2433,7 @@ def render_page(
         selectedFileId = data.file.id;
         selectedJobId = null;
         form.reset();
-        selectedFileName.textContent = '선택된 파일 없음';
+        selectedFileName.textContent = 'PDF, PNG, JPG (최대 100MB)';
         form.querySelector('input[name="trim"]').checked = true;
         form.querySelector('input[name="auto_slice"]').checked = true;
         syncModelField();
@@ -2320,6 +2575,16 @@ def render_page(
         modelSelect.value = '';
       }}
       syncModelField();
+    }});
+
+    detailReparse?.addEventListener('click', async () => {{
+      await parseSelectedFile();
+    }});
+
+    detailDelete?.addEventListener('click', async () => {{
+      if (selectedFileId) {{
+        await deleteFile(selectedFileId);
+      }}
     }});
 
     fileInput.addEventListener('change', async () => {{

@@ -305,17 +305,20 @@ def test_process_job_stores_json_and_markdown_results(tmp_path: Path):
     assert completed.markdown == "# Parsed"
 
 
-def test_render_page_uses_three_pane_review_layout():
+def test_render_page_uses_document_workspace_layout():
     html = render_page(config=DemoConfig(model="qwen/qwen3.7-plus"))
 
     assert 'class="app-shell"' in html
     assert "left-rail" in html
     assert 'class="pdf-stage"' in html
     assert "result-panel" in html
+    assert "detail-panel" in html
     assert "미리보기" in html
     assert "HTML" in html
     assert "JSON" in html
-    assert "<h2>Files</h2>" in html
+    assert "<h2>파일</h2>" in html
+    assert "<h2>파일 정보</h2>" in html
+    assert "파일을 드래그하여 업로드" in html
     assert "parse-step" not in html
     assert "pdf-controls" not in html
 
@@ -347,8 +350,9 @@ def test_render_page_includes_openrouter_model_controls():
 def test_render_page_supports_collapsible_and_resizable_workspace():
     html = render_page(config=DemoConfig())
 
-    assert "--rail-width: 260px" in html
-    assert "--content-width: calc((100% - var(--rail-width) - 6px) / 2)" in html
+    assert "--rail-width: 310px" in html
+    assert "--detail-width: 300px" in html
+    assert "--content-width: calc((100% - var(--rail-width) - var(--detail-width) - 6px) / 2)" in html
     assert "--pdf-width: var(--content-width)" in html
     assert "--result-width: var(--content-width)" in html
     assert 'id="sidebar-toggle"' in html
@@ -358,7 +362,7 @@ def test_render_page_supports_collapsible_and_resizable_workspace():
     assert "workspace.classList.toggle('rail-collapsed')" in html
     assert "fitWorkspaceContentWidths()" in html
     assert "setPointerCapture(event.pointerId)" in html
-    assert "grid-template-columns: var(--rail-width) var(--pdf-width) 6px var(--result-width);" in html
+    assert "grid-template-columns: var(--rail-width) var(--pdf-width) 6px var(--result-width) var(--detail-width);" in html
     assert ".workspace.rail-collapsed" in html
 
 
