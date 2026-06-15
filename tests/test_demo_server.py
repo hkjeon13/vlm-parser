@@ -55,8 +55,9 @@ def test_build_vlm_client_returns_none_when_config_is_incomplete():
 def test_job_store_creates_uploaded_job_with_uploaded_pdf(tmp_path: Path):
     store = JobStore(tmp_path)
 
-    job = store.create(
-        UploadedFile(filename="sample.pdf", content=b"%PDF-1.7"),
+    file = store.create_file(UploadedFile(filename="sample.pdf", content=b"%PDF-1.7"))
+    job = store.create_job(
+        file.id,
         JobOptions(use_vlm=False, render_dpi=180, trim=True, auto_slice=True),
     )
 
@@ -67,12 +68,48 @@ def test_job_store_creates_uploaded_job_with_uploaded_pdf(tmp_path: Path):
     assert store.list()[0].id == job.id
     assert store.to_summary(job)["status"] == "uploaded"
     assert store.to_summary(job)["links"]["source_pdf"].endswith("/sample.pdf")
+    assert store.to_file_summary(file)["latest_job"]["id"] == job.id
+
+
+def test_job_store_allows_multiple_parse_jobs_for_one_uploaded_file(tmp_path: Path):
+    store = JobStore(tmp_path)
+    file = store.create_file(UploadedFile(filename="sample.pdf", content=b"%PDF-1.7"))
+
+    static_job = store.create_job(
+        file.id,
+        JobOptions(use_vlm=False, render_dpi=180, trim=True, auto_slice=True),
+    )
+    vlm_job = store.create_job(
+        file.id,
+        JobOptions(use_vlm=True, render_dpi=180, trim=True, auto_slice=True),
+    )
+
+    assert static_job.id != vlm_job.id
+    assert static_job.source_path == vlm_job.source_path == file.source_path
+    assert [job.id for job in store.list_jobs(file.id)] == [vlm_job.id, static_job.id]
+    assert store.to_file_summary(file)["job_count"] == 2
+
+
+def test_job_store_deletes_uploaded_file_and_its_jobs(tmp_path: Path):
+    store = JobStore(tmp_path)
+    file = store.create_file(UploadedFile(filename="sample.pdf", content=b"%PDF-1.7"))
+    job = store.create_job(
+        file.id,
+        JobOptions(use_vlm=False, render_dpi=180, trim=True, auto_slice=True),
+    )
+
+    assert store.delete_file(file.id) is True
+
+    assert store.get_file(file.id) is None
+    assert store.get(job.id) is None
+    assert not file.source_path.exists()
 
 
 def test_job_store_can_mark_uploaded_job_queued(tmp_path: Path):
     store = JobStore(tmp_path)
-    job = store.create(
-        UploadedFile(filename="sample.pdf", content=b"%PDF-1.7"),
+    file = store.create_file(UploadedFile(filename="sample.pdf", content=b"%PDF-1.7"))
+    job = store.create_job(
+        file.id,
         JobOptions(use_vlm=False, render_dpi=180, trim=True, auto_slice=True),
     )
 
@@ -104,8 +141,9 @@ def test_job_store_tracks_parse_progress(tmp_path: Path):
 
 def test_process_job_stores_json_and_markdown_results(tmp_path: Path):
     store = JobStore(tmp_path)
-    job = store.create(
-        UploadedFile(filename="sample.pdf", content=b"%PDF-1.7"),
+    file = store.create_file(UploadedFile(filename="sample.pdf", content=b"%PDF-1.7"))
+    job = store.create_job(
+        file.id,
         JobOptions(use_vlm=False, render_dpi=180, trim=True, auto_slice=True),
     )
 
@@ -158,6 +196,9 @@ def test_render_page_uses_three_pane_review_layout():
     assert "미리보기" in html
     assert "HTML" in html
     assert "JSON" in html
+    assert "<h2>Files</h2>" in html
+    assert "parse-step" not in html
+    assert "pdf-controls" not in html
 
 
 def test_render_page_links_upload_button_to_file_input():
@@ -169,7 +210,7 @@ def test_render_page_links_upload_button_to_file_input():
     assert 'id="selected-file-name"' in html
     assert "fileInput.click()" in html
     assert "uploadSelectedFile()" in html
-    assert "parseSelectedJob()" in html
+    assert "parseSelectedFile()" in html
     assert "fileInput.addEventListener('change', async" in html
 
 
@@ -182,6 +223,8 @@ def test_render_page_places_download_actions_in_tab_bar():
     assert 'title="JSON 다운로드"' in html
     assert "job.links.markdown" in html
     assert "job.links.json" in html
+    assert "file.links.jobs" in html
+    assert "selectedFile.links.parse" in html
 
 
 def test_render_page_shows_parse_progress():
@@ -200,7 +243,7 @@ def test_render_page_includes_mobile_friendly_layout_rules():
     assert "@media (max-width: 780px)" in html
     assert ".app-shell { min-width: 0; min-height: 100vh; height: auto; overflow: visible; display: block; }" in html
     assert ".topbar {" in html
-    assert "grid-template-areas: \"title step\" \"upload upload\";" in html
+    assert "grid-template-areas: \"title\" \"upload\";" in html
     assert ".upload-bar { position: static; grid-area: upload; width: 100%; flex-wrap: wrap; }" in html
     assert ".workspace { display: flex; flex-direction: column; height: auto; }" in html
     assert ".left-rail { max-height: 220px; border-width: 0 0 1px 0; }" in html
@@ -210,27 +253,27 @@ def test_render_page_includes_mobile_friendly_layout_rules():
 def test_render_page_keeps_pdf_iframe_stable_during_polling():
     html = render_page(config=DemoConfig())
 
-    assert "let renderedPdfJobId = null;" in html
-    assert "function renderPdfPreview(job) {" in html
-    assert "if (renderedPdfJobId === job.id) {" in html
-    assert "renderPdfPreview(job);" in html
+    assert "let renderedPdfFileId = null;" in html
+    assert "function renderPdfPreview(file) {" in html
+    assert "if (renderedPdfFileId === file.id) {" in html
+    assert "renderPdfPreview(file);" in html
 
 
 def test_render_page_uses_wide_pdf_preview_spacing():
     html = render_page(config=DemoConfig())
 
-    assert "padding: 10px 12px 16px;" in html
-    assert "width: min(840px, calc(100% - 8px));" in html
+    assert "padding: 0;" in html
+    assert "width: 100%;" in html
 
 
 def test_render_page_opens_pdf_preview_in_full_width_mode():
     html = render_page(config=DemoConfig())
 
-    assert "function pdfPreviewUrl(job) {" in html
+    assert "function pdfPreviewUrl(file) {" in html
     assert "view=FitH" in html
     assert "zoom=page-width" in html
     assert "navpanes=0" in html
-    assert 'src="${pdfPreviewUrl(job)}"' in html
+    assert 'src="${pdfPreviewUrl(file)}"' in html
 
 
 def test_render_page_displays_results_by_page():
@@ -279,9 +322,11 @@ def test_api_index_payload_lists_job_endpoints():
     payload = api_index_payload()
 
     assert payload["name"] == "vlm-parser demo api"
+    assert payload["endpoints"]["files"] == "/api/files"
+    assert payload["endpoints"]["file_detail"] == "/api/files/{file_id}"
+    assert payload["endpoints"]["file_parse"] == "/api/files/{file_id}/parse"
     assert payload["endpoints"]["jobs"] == "/api/jobs"
     assert payload["endpoints"]["job_detail"] == "/api/jobs/{job_id}"
-    assert payload["endpoints"]["parse"] == "/api/jobs/{job_id}/parse"
 
 
 def test_content_disposition_header_supports_korean_filenames():

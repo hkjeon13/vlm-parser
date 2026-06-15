@@ -4,6 +4,7 @@ import argparse
 import html
 import json
 import os
+import shutil
 import sys
 import tempfile
 import threading
@@ -15,7 +16,7 @@ from email.parser import BytesParser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import quote, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 from uuid import uuid4
 
 
@@ -50,8 +51,18 @@ class JobOptions:
 
 
 @dataclass(slots=True)
+class WorkspaceFile:
+    id: str
+    filename: str
+    source_path: Path
+    created_at: float = 0.0
+    updated_at: float = 0.0
+
+
+@dataclass(slots=True)
 class ParseJob:
     id: str
+    file_id: str
     filename: str
     source_path: Path
     options: JobOptions
@@ -71,39 +82,98 @@ class JobStore:
     def __init__(self, root_dir: str | Path):
         self.root_dir = Path(root_dir)
         self.root_dir.mkdir(parents=True, exist_ok=True)
+        self._files: dict[str, WorkspaceFile] = {}
         self._jobs: dict[str, ParseJob] = {}
+        self._file_jobs: dict[str, list[str]] = {}
         self._lock = threading.Lock()
 
-    def create(self, uploaded: UploadedFile, options: JobOptions) -> ParseJob:
-        job_id = uuid4().hex
-        job_dir = self.root_dir / job_id
-        job_dir.mkdir(parents=True, exist_ok=True)
-        source_path = job_dir / "source.pdf"
+    def create_file(self, uploaded: UploadedFile) -> WorkspaceFile:
+        file_id = uuid4().hex
+        file_dir = self.root_dir / file_id
+        file_dir.mkdir(parents=True, exist_ok=True)
+        source_path = file_dir / "source.pdf"
         source_path.write_bytes(uploaded.content)
         now = time.time()
-        job = ParseJob(
-            id=job_id,
+        file = WorkspaceFile(
+            id=file_id,
             filename=uploaded.filename or "uploaded.pdf",
             source_path=source_path,
-            options=options,
             created_at=now,
             updated_at=now,
         )
         with self._lock:
+            self._files[file_id] = file
+            self._file_jobs[file_id] = []
+        return file
+
+    def create_job(self, file_id: str, options: JobOptions) -> ParseJob | None:
+        with self._lock:
+            file = self._files.get(file_id)
+            if file is None:
+                return None
+            job_id = uuid4().hex
+            now = time.time()
+            job = ParseJob(
+                id=job_id,
+                file_id=file.id,
+                filename=file.filename,
+                source_path=file.source_path,
+                options=options,
+                created_at=now,
+                updated_at=now,
+            )
             self._jobs[job_id] = job
+            self._file_jobs.setdefault(file_id, []).append(job_id)
+            file.updated_at = now
+            return job
+
+    def create(self, uploaded: UploadedFile, options: JobOptions) -> ParseJob:
+        file = self.create_file(uploaded)
+        job = self.create_job(file.id, options)
+        if job is None:
+            raise RuntimeError("Failed to create parse job")
         return job
+
+    def get_file(self, file_id: str) -> WorkspaceFile | None:
+        with self._lock:
+            return self._files.get(file_id)
 
     def get(self, job_id: str) -> ParseJob | None:
         with self._lock:
             return self._jobs.get(job_id)
 
-    def list(self) -> list[ParseJob]:
+    def list_files(self) -> list[WorkspaceFile]:
         with self._lock:
             return sorted(
-                self._jobs.values(),
-                key=lambda job: job.created_at,
+                self._files.values(),
+                key=lambda file: file.updated_at,
                 reverse=True,
             )
+
+    def list_jobs(self, file_id: str | None = None) -> list[ParseJob]:
+        with self._lock:
+            if file_id is None:
+                jobs = list(self._jobs.values())
+            else:
+                jobs = [
+                    self._jobs[job_id]
+                    for job_id in self._file_jobs.get(file_id, [])
+                    if job_id in self._jobs
+                ]
+            return sorted(jobs, key=lambda job: job.created_at, reverse=True)
+
+    def list(self) -> list[ParseJob]:
+        return self.list_jobs()
+
+    def delete_file(self, file_id: str) -> bool:
+        with self._lock:
+            file = self._files.pop(file_id, None)
+            if file is None:
+                return False
+            for job_id in self._file_jobs.pop(file_id, []):
+                self._jobs.pop(job_id, None)
+        shutil.rmtree(self.root_dir / file_id, ignore_errors=True)
+        return True
 
     def mark_running(self, job_id: str) -> ParseJob | None:
         with self._lock:
@@ -113,7 +183,7 @@ class JobStore:
             job.status = "running"
             if not job.progress_label:
                 job.progress_label = "Starting parse"
-            job.updated_at = time.time()
+            self._touch(job)
             return job
 
     def mark_queued(self, job_id: str) -> ParseJob | None:
@@ -127,7 +197,7 @@ class JobStore:
             job.progress_total = 0
             job.progress_percent = 0
             job.progress_label = "Queued"
-            job.updated_at = time.time()
+            self._touch(job)
             return job
 
     def update_progress(self, job_id: str, *, current: int, total: int, label: str) -> ParseJob | None:
@@ -141,7 +211,7 @@ class JobStore:
             job.progress_total = safe_total
             job.progress_percent = int(round((safe_current / safe_total) * 100)) if safe_total else 0
             job.progress_label = label
-            job.updated_at = time.time()
+            self._touch(job)
             return job
 
     def mark_done(self, job_id: str, result_json: dict, markdown: str) -> ParseJob | None:
@@ -156,7 +226,7 @@ class JobStore:
             job.progress_current = job.progress_total or job.progress_current
             job.progress_percent = 100
             job.progress_label = "Complete"
-            job.updated_at = time.time()
+            self._touch(job)
             return job
 
     def mark_failed(self, job_id: str, error: str) -> ParseJob | None:
@@ -167,12 +237,53 @@ class JobStore:
             job.status = "failed"
             job.error = error
             job.progress_label = "Failed"
-            job.updated_at = time.time()
+            self._touch(job)
             return job
+
+    def _set_status(self, job_id: str, status: str, *, clear_error: bool = False) -> ParseJob | None:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                return None
+            job.status = status
+            if clear_error:
+                job.error = ""
+            self._touch(job)
+            return job
+
+    def _touch(self, job: ParseJob) -> None:
+        now = time.time()
+        job.updated_at = now
+        file = self._files.get(job.file_id)
+        if file is not None:
+            file.updated_at = now
+
+    def _latest_job(self, file_id: str) -> ParseJob | None:
+        jobs = self.list_jobs(file_id)
+        return jobs[0] if jobs else None
+
+    def to_file_summary(self, file: WorkspaceFile) -> dict:
+        jobs = self.list_jobs(file.id)
+        latest_job = jobs[0] if jobs else None
+        return {
+            "id": file.id,
+            "filename": file.filename,
+            "created_at": file.created_at,
+            "updated_at": file.updated_at,
+            "job_count": len(jobs),
+            "latest_job": self.to_summary(latest_job) if latest_job else None,
+            "links": {
+                "self": f"/api/files/{file.id}",
+                "jobs": f"/api/files/{file.id}/jobs",
+                "parse": f"/api/files/{file.id}/parse",
+                "source_pdf": file_source_pdf_link(file.id, file.filename),
+            },
+        }
 
     def to_summary(self, job: ParseJob) -> dict:
         return {
             "id": job.id,
+            "file_id": job.file_id,
             "filename": job.filename,
             "status": job.status,
             "error": job.error,
@@ -191,7 +302,6 @@ class JobStore:
             },
             "links": {
                 "self": f"/api/jobs/{job.id}",
-                "parse": f"/api/jobs/{job.id}/parse",
                 "source_pdf": source_pdf_link(job.id, job.filename),
                 "json": f"/api/jobs/{job.id}/result.json",
                 "markdown": f"/api/jobs/{job.id}/result.md",
@@ -315,9 +425,12 @@ def api_index_payload() -> dict:
         "name": "vlm-parser demo api",
         "status": "ok",
         "endpoints": {
+            "files": "/api/files",
+            "file_detail": "/api/files/{file_id}",
+            "file_jobs": "/api/files/{file_id}/jobs",
+            "file_parse": "/api/files/{file_id}/parse",
             "jobs": "/api/jobs",
             "job_detail": "/api/jobs/{job_id}",
-            "parse": "/api/jobs/{job_id}/parse",
             "source_pdf": "/api/jobs/{job_id}/source.pdf",
             "result_json": "/api/jobs/{job_id}/result.json",
             "result_markdown": "/api/jobs/{job_id}/result.md",
@@ -339,6 +452,13 @@ def source_pdf_link(job_id: str, filename: str) -> str:
     return f"/api/jobs/{job_id}/source/{quote(display_name, safe='')}"
 
 
+def file_source_pdf_link(file_id: str, filename: str) -> str:
+    display_name = Path(filename).name or "uploaded.pdf"
+    if not Path(display_name).suffix:
+        display_name = f"{display_name}.pdf"
+    return f"/api/files/{file_id}/source/{quote(display_name, safe='')}"
+
+
 class DemoHandler(BaseHTTPRequestHandler):
     server_version = "vlm-parser-demo/0.1"
 
@@ -355,10 +475,13 @@ class DemoHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
-        if path == "/api/jobs":
-            self._handle_create_job()
+        if path in {"/api/jobs", "/api/files"}:
+            self._handle_create_file()
             return
         parts = path.strip("/").split("/")
+        if len(parts) == 4 and parts[:2] == ["api", "files"] and parts[3] == "parse":
+            self._handle_parse_file(parts[2])
+            return
         if len(parts) == 4 and parts[:2] == ["api", "jobs"] and parts[3] == "parse":
             self._handle_parse_job(parts[2])
             return
@@ -366,24 +489,75 @@ class DemoHandler(BaseHTTPRequestHandler):
             self.send_error(HTTPStatus.NOT_FOUND)
             return
         try:
-            job, error = self._enqueue_job()
+            file, error = self._enqueue_file()
             config = load_demo_config(ROOT_DIR / ".env")
             if error:
                 self._send_html(render_page(config=config, error=error))
             else:
-                self._send_html(render_page(config=config, notice=f"{job.filename} 작업을 등록했습니다."))
+                self._send_html(render_page(config=config, notice=f"{file.filename} 파일을 등록했습니다."))
         except Exception as exc:
             traceback.print_exc()
             self._send_html(render_page(error=f"{type(exc).__name__}: {exc}"))
 
-    def _handle_create_job(self) -> None:
+    def do_DELETE(self) -> None:
+        path = urlparse(self.path).path
+        parts = path.strip("/").split("/")
+        if len(parts) == 3 and parts[:2] == ["api", "files"]:
+            if JOB_STORE.delete_file(parts[2]):
+                self._send_json({"ok": True})
+            else:
+                self._send_json({"error": "File not found"}, status=HTTPStatus.NOT_FOUND)
+            return
+        self._send_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
+
+    def _handle_create_file(self) -> None:
         try:
-            job, error = self._enqueue_job()
+            file, error = self._enqueue_file()
             if error:
                 self._send_json({"error": error}, status=HTTPStatus.BAD_REQUEST)
                 return
             self._send_json(
-                {"job": JOB_STORE.to_summary(job)},
+                {"file": JOB_STORE.to_file_summary(file)},
+                status=HTTPStatus.ACCEPTED,
+            )
+        except Exception as exc:
+            traceback.print_exc()
+            self._send_json(
+                {"error": f"{type(exc).__name__}: {exc}"},
+                status=HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+
+    def _handle_parse_file(self, file_id: str) -> None:
+        try:
+            file = JOB_STORE.get_file(file_id)
+            if file is None:
+                self._send_json({"error": "File not found"}, status=HTTPStatus.NOT_FOUND)
+                return
+
+            fields, _uploaded = self._parse_multipart()
+            options = _job_options_from_fields(fields)
+            config = load_demo_config(ROOT_DIR / ".env")
+            if options.use_vlm and build_vlm_client(config) is None:
+                self._send_json(
+                    {"error": ".env에 MODEL_API_KEY, MODEL_NAME, MODEL_BASE_URL을 모두 설정해야 VLM을 사용할 수 있습니다."},
+                    status=HTTPStatus.BAD_REQUEST,
+                )
+                return
+
+            job = JOB_STORE.create_job(file.id, options)
+            if job is None:
+                self._send_json({"error": "File not found"}, status=HTTPStatus.NOT_FOUND)
+                return
+            queued = JOB_STORE.mark_queued(job.id)
+            if queued is None:
+                self._send_json({"error": "Job not found"}, status=HTTPStatus.NOT_FOUND)
+                return
+            start_job(queued.id, config=config)
+            self._send_json(
+                {
+                    "file": JOB_STORE.to_file_summary(file),
+                    "job": JOB_STORE.to_summary(queued),
+                },
                 status=HTTPStatus.ACCEPTED,
             )
         except Exception as exc:
@@ -433,26 +607,12 @@ class DemoHandler(BaseHTTPRequestHandler):
                 status=HTTPStatus.INTERNAL_SERVER_ERROR,
             )
 
-    def _enqueue_job(self) -> tuple[ParseJob | None, str]:
+    def _enqueue_file(self) -> tuple[WorkspaceFile | None, str]:
         fields, uploaded = self._parse_multipart()
         if uploaded is None or not uploaded.content:
             return None, "PDF 파일을 선택해 주세요."
 
-        config = load_demo_config(ROOT_DIR / ".env")
-        use_vlm = fields.get("use_vlm", "off") == "on"
-        if use_vlm and build_vlm_client(config) is None:
-            return None, ".env에 MODEL_API_KEY, MODEL_NAME, MODEL_BASE_URL을 모두 설정해야 VLM을 사용할 수 있습니다."
-
-        job = JOB_STORE.create(
-            uploaded,
-            JobOptions(
-                use_vlm=use_vlm,
-                render_dpi=_int_field(fields.get("render_dpi", "180"), default=180),
-                trim=fields.get("trim", "off") == "on",
-                auto_slice=fields.get("auto_slice", "off") == "on",
-            ),
-        )
-        return job, ""
+        return JOB_STORE.create_file(uploaded), ""
 
     def _handle_get_api(self, path: str) -> None:
         if path in {"/api", "/api/"}:
@@ -462,8 +622,15 @@ class DemoHandler(BaseHTTPRequestHandler):
         if path == "/api/jobs":
             self._send_json({"jobs": [JOB_STORE.to_summary(job) for job in JOB_STORE.list()]})
             return
+        if path == "/api/files":
+            self._send_json({"files": [JOB_STORE.to_file_summary(file) for file in JOB_STORE.list_files()]})
+            return
 
         parts = path.strip("/").split("/")
+        if len(parts) >= 3 and parts[:2] == ["api", "files"]:
+            self._handle_get_file_api(parts)
+            return
+
         if len(parts) < 3 or parts[:2] != ["api", "jobs"]:
             self._send_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
             return
@@ -510,10 +677,40 @@ class DemoHandler(BaseHTTPRequestHandler):
 
         self._send_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
 
+    def _handle_get_file_api(self, parts: list[str]) -> None:
+        file = JOB_STORE.get_file(parts[2])
+        if file is None:
+            self._send_json({"error": "File not found"}, status=HTTPStatus.NOT_FOUND)
+            return
+
+        if len(parts) == 3:
+            self._send_json({"file": JOB_STORE.to_file_summary(file)})
+            return
+
+        if len(parts) == 4 and parts[3] == "jobs":
+            self._send_json({"jobs": [JOB_STORE.to_summary(job) for job in JOB_STORE.list_jobs(file.id)]})
+            return
+
+        if (len(parts) == 4 and parts[3] == "source.pdf") or (
+            len(parts) == 5 and parts[3] == "source"
+        ):
+            self._send_file(
+                file.source_path.read_bytes(),
+                content_type="application/pdf",
+                filename=file.filename,
+                inline=True,
+            )
+            return
+
+        self._send_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
+
     def _parse_multipart(self) -> tuple[dict[str, str], UploadedFile | None]:
         length = int(self.headers.get("Content-Length", "0"))
         content_type = self.headers.get("Content-Type", "")
         body = self.rfile.read(length)
+        if "multipart/form-data" not in content_type:
+            parsed = parse_qs(body.decode("utf-8"))
+            return {key: values[-1] for key, values in parsed.items()}, None
         raw_message = (
             f"Content-Type: {content_type}\r\n"
             "MIME-Version: 1.0\r\n\r\n"
@@ -578,6 +775,15 @@ def _int_field(value: str, *, default: int) -> int:
         return int(value)
     except ValueError:
         return default
+
+
+def _job_options_from_fields(fields: dict[str, str]) -> JobOptions:
+    return JobOptions(
+        use_vlm=fields.get("use_vlm", "off") == "on",
+        render_dpi=_int_field(fields.get("render_dpi", "180"), default=180),
+        trim=fields.get("trim", "off") == "on",
+        auto_slice=fields.get("auto_slice", "off") == "on",
+    )
 
 
 def render_page(
@@ -671,33 +877,6 @@ def render_page(
     }}
     .topbar .status {{
       display: none;
-    }}
-    .parse-step {{
-      position: absolute;
-      left: 50%;
-      top: 13px;
-      transform: translateX(-50%);
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      min-height: 34px;
-      border: 2px solid var(--accent);
-      border-radius: 999px;
-      background: #fff;
-      color: var(--accent-strong);
-      padding: 4px 12px 4px 6px;
-      font-weight: 800;
-      box-shadow: 0 0 0 4px rgba(91, 92, 246, 0.12);
-    }}
-    .parse-step span {{
-      display: grid;
-      place-items: center;
-      width: 22px;
-      height: 22px;
-      border-radius: 50%;
-      background: var(--accent);
-      color: #fff;
-      font-size: 12px;
     }}
     header {{
       display: flex;
@@ -894,23 +1073,70 @@ def render_page(
       gap: 8px;
     }}
     .job-row {{
+      position: relative;
       display: grid;
-      gap: 4px;
+      grid-template-columns: minmax(0, 1fr) 32px;
+      gap: 8px;
       border: 1px solid transparent;
       border-radius: 8px;
       background: transparent;
       color: var(--ink);
       text-align: left;
       min-height: 0;
-      padding: 11px 14px;
+      padding: 11px 10px 11px 14px;
     }}
     .job-row:hover {{ background: #fff; }}
     .job-row.active {{ background: #eef2ff; border-color: #8b8cff; box-shadow: inset 3px 0 0 #5b5cf6; }}
-    .job-row strong {{
+    .file-row-main {{
+      display: grid;
+      min-width: 0;
+      gap: 4px;
+    }}
+    .job-row strong, .file-name {{
       display: block;
-      overflow-wrap: anywhere;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
       font-weight: 750;
     }}
+    .file-menu-button {{
+      width: 32px;
+      min-height: 32px;
+      align-self: start;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      padding: 0;
+      font-size: 20px;
+      line-height: 1;
+    }}
+    .file-menu-button:hover {{ background: #e2e8f0; color: var(--ink); }}
+    .file-menu {{
+      position: absolute;
+      top: 42px;
+      right: 8px;
+      z-index: 10;
+      display: grid;
+      min-width: 120px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 10px 26px rgba(15,23,42,0.16);
+      padding: 6px;
+    }}
+    .file-menu[hidden] {{ display: none; }}
+    .file-menu button {{
+      min-height: 32px;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--ink);
+      padding: 6px 9px;
+      text-align: left;
+      font-size: 13px;
+    }}
+    .file-menu button:hover {{ background: #f1f5f9; }}
+    .file-menu button.danger {{ color: var(--error); }}
     .job-row span {{ color: var(--muted); font-size: 13px; }}
     .badge {{
       display: inline-flex;
@@ -959,17 +1185,16 @@ def render_page(
     .pdf-stage {{
       min-width: 0;
       min-height: 0;
-      display: grid;
-      grid-template-rows: minmax(0, 1fr) 48px;
       background: #cfd7e3;
       border-right: 1px solid var(--line);
     }}
     .pdf-canvas {{
+      width: 100%;
+      height: 100%;
       min-height: 0;
-      overflow: auto;
-      padding: 10px 12px 16px;
+      overflow: hidden;
+      padding: 0;
       display: grid;
-      place-items: start center;
     }}
     .pdf-empty {{
       align-self: center;
@@ -984,30 +1209,10 @@ def render_page(
       font-weight: 700;
     }}
     .pdf-shell {{
-      width: min(840px, calc(100% - 8px));
-      height: calc(100vh - 170px);
-      min-height: 560px;
+      width: 100%;
+      height: 100%;
+      min-height: 0;
       background: #fff;
-      box-shadow: 0 1px 2px rgba(15,23,42,0.16);
-    }}
-    .pdf-controls {{
-      display: grid;
-      grid-template-columns: 92px minmax(0, 1fr) 120px;
-      align-items: center;
-      gap: 16px;
-      padding: 8px 18px;
-      background: #e8edf4;
-      border-top: 1px solid #c6d0df;
-    }}
-    .zoom-track {{
-      height: 8px;
-      border-radius: 99px;
-      background: linear-gradient(90deg, #111827 0 52%, #b7c1cf 52% 100%);
-    }}
-    .page-chip {{
-      justify-self: end;
-      color: #475569;
-      font-weight: 700;
     }}
     .preview {{
       min-width: 0;
@@ -1184,13 +1389,12 @@ def render_page(
         top: 0;
         z-index: 5;
         grid-template-columns: minmax(0, 1fr) auto;
-        grid-template-areas: "title step" "upload upload";
+        grid-template-areas: "title" "upload";
         gap: 10px;
         min-height: 0;
         padding: 10px 12px;
       }}
       .topbar > div:first-child {{ grid-area: title; min-width: 0; }}
-      .parse-step {{ position: static; transform: none; grid-area: step; justify-self: end; }}
       .upload-bar {{ position: static; grid-area: upload; width: 100%; flex-wrap: wrap; }}
       .selected-file-name {{ flex: 1 1 130px; max-width: none; }}
       .upload-bar .options {{ flex: 1 0 100%; justify-content: space-between; }}
@@ -1200,11 +1404,9 @@ def render_page(
       .left-rail {{ max-height: 220px; border-width: 0 0 1px 0; }}
       .jobs header {{ padding: 10px 12px; }}
       .job-list {{ height: auto; max-height: 164px; }}
-      .pdf-stage {{ min-height: 520px; grid-template-rows: minmax(0, 472px) 48px; border-right: 0; border-bottom: 1px solid var(--line); }}
+      .pdf-stage {{ min-height: 520px; border-right: 0; border-bottom: 1px solid var(--line); }}
       .pdf-canvas {{ padding: 8px; }}
       .pdf-shell {{ width: 100%; height: min(62vh, 520px); min-height: 420px; }}
-      .pdf-controls {{ grid-template-columns: 58px minmax(0, 1fr) 64px; gap: 10px; padding: 8px 10px; }}
-      .page-chip {{ font-size: 12px; }}
       .result-panel {{ min-height: 560px; }}
       .preview-toolbar {{ padding: 14px 12px 10px; }}
       .result-tabs {{ overflow-x: auto; flex-wrap: nowrap; padding: 0 12px; }}
@@ -1216,7 +1418,6 @@ def render_page(
     }}
     @media (max-width: 430px) {{
       h1 {{ font-size: 15px; }}
-      .parse-step {{ padding-right: 10px; }}
       .upload-button, .upload-bar button[type="submit"] {{ padding: 0 10px; }}
       .tab-download-links a {{ padding: 4px 7px; }}
     }}
@@ -1228,7 +1429,6 @@ def render_page(
       <div>
         <h1>vlm-parser demo</h1>
       </div>
-      <div class="parse-step"><span>1</span> Parse</div>
       <div class="status">
         <strong>{model_label}</strong>
         <span>VLM config: {vlm_status}</span>
@@ -1236,7 +1436,7 @@ def render_page(
     </header>
     {error_section}
     {notice_section}
-    <form id="upload-form" class="upload-bar" action="/api/jobs" method="post" enctype="multipart/form-data">
+    <form id="upload-form" class="upload-bar" action="/api/files" method="post" enctype="multipart/form-data">
       <button id="upload-trigger" class="upload-button" type="button">업로드</button>
       <input id="pdf-input" name="pdf" type="file" accept="application/pdf,.pdf">
       <span id="selected-file-name" class="selected-file-name">선택된 파일 없음</span>
@@ -1254,21 +1454,16 @@ def render_page(
     <section class="workspace">
       <aside class="jobs left-rail">
         <header>
-          <h2>Jobs</h2>
+          <h2>Files</h2>
           <span id="job-count" class="badge">0</span>
         </header>
         <div id="job-list" class="job-list">
-          <div class="empty-state">No jobs yet.</div>
+          <div class="empty-state">No files yet.</div>
         </div>
       </aside>
       <section class="pdf-stage">
         <div id="pdf-canvas" class="pdf-canvas">
           <div class="pdf-empty">PDF를 업로드하면 이 영역에서 원문을 확인할 수 있습니다.</div>
-        </div>
-        <div class="pdf-controls">
-          <button class="ghost-button" type="button">↻</button>
-          <div class="zoom-track" aria-hidden="true"></div>
-          <span class="page-chip"><strong>1</strong> / <span id="page-total">-</span>⌄</span>
         </div>
       </section>
       <section class="preview result-panel">
@@ -1304,12 +1499,15 @@ def render_page(
     const pdfCanvas = document.getElementById('pdf-canvas');
     const jobIdLabel = document.getElementById('job-id-label');
     const tabButtons = Array.from(document.querySelectorAll('[data-tab]'));
+    let selectedFileId = null;
     let selectedJobId = null;
+    let selectedFile = null;
     let selectedJob = null;
     let selectedMarkdown = '';
     let selectedJson = null;
-    let renderedPdfJobId = null;
+    let renderedPdfFileId = null;
     let renderedResultKey = null;
+    let openMenuFileId = null;
     let activeTab = 'preview';
 
     function escapeHtml(value) {{
@@ -1323,6 +1521,9 @@ def render_page(
     }}
 
     function statusLabel(job) {{
+      if (!job) {{
+        return '<span class="badge">uploaded</span>';
+      }}
       return `<span class="badge ${{escapeHtml(job.status)}}">${{escapeHtml(job.status)}}</span>`;
     }}
 
@@ -1346,18 +1547,26 @@ def render_page(
       `;
     }}
 
-    function pdfPreviewUrl(job) {{
-      return `${{job.links.source_pdf}}#view=FitH&zoom=page-width&navpanes=0`;
+    function fileMeta(file) {{
+      const job = file.latest_job;
+      if (!job) {{
+        return `${{statusLabel(null)}} ${{escapeHtml(file.job_count)}} runs`;
+      }}
+      return `${{statusLabel(job)}} ${{escapeHtml(file.job_count)}} runs · VLM: ${{job.use_vlm ? 'on' : 'off'}} · DPI ${{job.render_dpi}}`;
     }}
 
-    function renderPdfPreview(job) {{
-      if (renderedPdfJobId === job.id) {{
+    function pdfPreviewUrl(file) {{
+      return `${{file.links.source_pdf}}#view=FitH&zoom=page-width&navpanes=0`;
+    }}
+
+    function renderPdfPreview(file) {{
+      if (renderedPdfFileId === file.id) {{
         return;
       }}
-      renderedPdfJobId = job.id;
+      renderedPdfFileId = file.id;
       pdfCanvas.innerHTML = `
         <div class="pdf-shell">
-          <iframe class="pdf-frame" src="${{pdfPreviewUrl(job)}}" title="PDF preview"></iframe>
+          <iframe class="pdf-frame" src="${{pdfPreviewUrl(file)}}" title="PDF preview"></iframe>
         </div>
       `;
     }}
@@ -1378,50 +1587,76 @@ def render_page(
       return `${{job.id}}:${{job.status}}:${{job.updated_at}}:${{activeTab}}`;
     }}
 
-    async function refreshJobs() {{
-      const response = await fetch('/api/jobs');
+    async function refreshFiles() {{
+      const response = await fetch('/api/files');
       const data = await response.json();
-      const jobs = data.jobs || [];
-      jobCount.textContent = String(jobs.length);
-      if (!jobs.length) {{
-        jobList.innerHTML = '<div class="empty-state">No jobs yet.</div>';
+      const files = data.files || [];
+      jobCount.textContent = String(files.length);
+      if (!files.length) {{
+        selectedFileId = null;
+        selectedJobId = null;
+        selectedFile = null;
+        selectedJob = null;
+        jobList.innerHTML = '<div class="empty-state">No files yet.</div>';
+        selectedTitle.textContent = 'Select a file';
+        jobIdLabel.textContent = '-';
         return;
       }}
-      if (!selectedJobId) {{
-        selectedJobId = jobs[0].id;
+      if (!selectedFileId || !files.some((file) => file.id === selectedFileId)) {{
+        selectedFileId = files[0].id;
+        selectedJobId = files[0].latest_job?.id || null;
       }}
-      jobList.innerHTML = jobs.map((job) => `
-        <button class="job-row ${{job.id === selectedJobId ? 'active' : ''}}" data-job-id="${{escapeHtml(job.id)}}">
-          <strong>${{escapeHtml(job.filename)}}</strong>
-          <span>${{statusLabel(job)}} VLM: ${{job.use_vlm ? 'on' : 'off'}} · DPI ${{job.render_dpi}}</span>
-          ${{['queued', 'running'].includes(job.status) ? progressBar(job) : ''}}
-          ${{job.error ? `<span>${{escapeHtml(job.error)}}</span>` : ''}}
-        </button>
+      jobList.innerHTML = files.map((file) => `
+        <div class="job-row ${{file.id === selectedFileId ? 'active' : ''}}" data-file-id="${{escapeHtml(file.id)}}" role="button" tabindex="0">
+          <div class="file-row-main">
+            <strong class="file-name" title="${{escapeHtml(file.filename)}}">${{escapeHtml(file.filename)}}</strong>
+            <span>${{fileMeta(file)}}</span>
+            ${{['queued', 'running'].includes(file.latest_job?.status) ? progressBar(file.latest_job) : ''}}
+          </div>
+          <button class="file-menu-button" type="button" data-file-menu-id="${{escapeHtml(file.id)}}" title="파일 메뉴" aria-label="파일 메뉴">...</button>
+          <div class="file-menu" data-file-menu="${{escapeHtml(file.id)}}" ${{file.id === openMenuFileId ? '' : 'hidden'}}>
+            <button type="button" data-file-action="details">상세정보</button>
+            <button class="danger" type="button" data-file-action="delete">삭제</button>
+          </div>
+        </div>
       `).join('');
-      const selected = jobs.find((job) => job.id === selectedJobId) || jobs[0];
+      const selected = files.find((file) => file.id === selectedFileId) || files[0];
       if (selected) {{
-        selectedJobId = selected.id;
-        await renderJob(selected);
+        selectedFileId = selected.id;
+        await renderFile(selected);
       }}
+    }}
+
+    async function renderFile(file) {{
+      selectedFile = file;
+      selectedTitle.textContent = file.filename;
+      downloadLinks.innerHTML = '';
+      tabDownloadLinks.innerHTML = '';
+      renderPdfPreview(file);
+      const jobsResponse = await fetch(file.links.jobs);
+      const jobsData = await jobsResponse.json();
+      const jobs = jobsData.jobs || [];
+      const job = jobs.find((item) => item.id === selectedJobId) || jobs[0] || file.latest_job;
+      if (!job) {{
+        selectedJob = null;
+        selectedJobId = null;
+        renderedResultKey = null;
+        jobIdLabel.textContent = '-';
+        previewBody.className = 'result-body';
+        previewBody.innerHTML = '<div class="empty-state">업로드 완료. 실행을 누르면 이 파일의 새 파싱을 시작합니다.</div>';
+        return;
+      }}
+      selectedJobId = job.id;
+      await renderJob(job);
     }}
 
     async function renderJob(job) {{
       selectedJob = job;
-      selectedTitle.textContent = job.filename;
       jobIdLabel.textContent = job.id;
-      downloadLinks.innerHTML = '';
-      tabDownloadLinks.innerHTML = '';
-      renderPdfPreview(job);
       if (job.status === 'failed') {{
         renderedResultKey = null;
         previewBody.className = 'result-body';
         previewBody.innerHTML = `<div class="error">${{escapeHtml(job.error || 'Parsing failed.')}}</div>`;
-        return;
-      }}
-      if (job.status === 'uploaded') {{
-        renderedResultKey = null;
-        previewBody.className = 'result-body';
-        previewBody.innerHTML = '<div class="empty-state">업로드 완료. 실행을 누르면 파싱을 시작합니다.</div>';
         return;
       }}
       if (job.status !== 'done') {{
@@ -1435,8 +1670,6 @@ def render_page(
         `;
         return;
       }}
-      downloadLinks.innerHTML = `
-      `;
       tabDownloadLinks.innerHTML = `
         <a href="${{job.links.markdown}}" title="Markdown 다운로드" aria-label="Markdown 다운로드">
           <span aria-hidden="true">↓</span><span>MD</span>
@@ -1499,7 +1732,7 @@ def render_page(
       uploadTrigger.disabled = true;
       uploadTrigger.textContent = '업로드 중...';
       try {{
-        const response = await fetch('/api/jobs', {{
+        const response = await fetch('/api/files', {{
           method: 'POST',
           body: new FormData(form)
         }});
@@ -1507,12 +1740,13 @@ def render_page(
         if (!response.ok) {{
           throw new Error(data.error || 'Upload failed');
         }}
-        selectedJobId = data.job.id;
+        selectedFileId = data.file.id;
+        selectedJobId = null;
         form.reset();
         selectedFileName.textContent = '선택된 파일 없음';
         form.querySelector('input[name="trim"]').checked = true;
         form.querySelector('input[name="auto_slice"]').checked = true;
-        await refreshJobs();
+        await refreshFiles();
       }} catch (error) {{
         previewBody.className = 'result-body';
         previewBody.innerHTML = `<div class="error">${{escapeHtml(error.message)}}</div>`;
@@ -1522,9 +1756,9 @@ def render_page(
       }}
     }}
 
-    async function parseSelectedJob() {{
+    async function parseSelectedFile() {{
       const button = form.querySelector('button[type="submit"]');
-      if (!selectedJobId) {{
+      if (!selectedFileId || !selectedFile) {{
         previewBody.className = 'result-body';
         previewBody.innerHTML = '<div class="error">먼저 PDF를 업로드해 주세요.</div>';
         fileInput.click();
@@ -1533,15 +1767,17 @@ def render_page(
       button.disabled = true;
       button.textContent = '실행 중...';
       try {{
-        const response = await fetch(`/api/jobs/${{encodeURIComponent(selectedJobId)}}/parse`, {{
-          method: 'POST'
+        const response = await fetch(selectedFile.links.parse, {{
+          method: 'POST',
+          body: new FormData(form)
         }});
         const data = await response.json();
         if (!response.ok) {{
           throw new Error(data.error || 'Parse failed');
         }}
         selectedJobId = data.job.id;
-        await refreshJobs();
+        selectedFileId = data.file.id;
+        await refreshFiles();
       }} catch (error) {{
         previewBody.className = 'result-body';
         previewBody.innerHTML = `<div class="error">${{escapeHtml(error.message)}}</div>`;
@@ -1551,9 +1787,52 @@ def render_page(
       }}
     }}
 
+    async function showFileDetails(fileId) {{
+      const file = selectedFile && selectedFile.id === fileId ? selectedFile : null;
+      if (!file) {{
+        return;
+      }}
+      const jobsResponse = await fetch(file.links.jobs);
+      const jobsData = await jobsResponse.json();
+      const jobs = jobsData.jobs || [];
+      renderedResultKey = null;
+      previewBody.className = 'result-body';
+      previewBody.innerHTML = `
+        <div class="empty-state">
+          <strong>${{escapeHtml(file.filename)}}</strong><br>
+          Parse jobs: ${{escapeHtml(jobs.length)}}<br>
+          Latest: ${{escapeHtml(jobs[0]?.status || 'none')}}
+        </div>
+      `;
+    }}
+
+    async function deleteFile(fileId) {{
+      const file = selectedFile && selectedFile.id === fileId ? selectedFile : null;
+      const label = file?.filename || '이 파일';
+      if (!window.confirm(`${{label}}을 삭제할까요? 관련 파싱 결과도 같이 삭제됩니다.`)) {{
+        return;
+      }}
+      const response = await fetch(`/api/files/${{encodeURIComponent(fileId)}}`, {{ method: 'DELETE' }});
+      const data = await response.json();
+      if (!response.ok) {{
+        previewBody.className = 'result-body';
+        previewBody.innerHTML = `<div class="error">${{escapeHtml(data.error || 'Delete failed')}}</div>`;
+        return;
+      }}
+      if (selectedFileId === fileId) {{
+        selectedFileId = null;
+        selectedJobId = null;
+        selectedFile = null;
+        selectedJob = null;
+        renderedPdfFileId = null;
+      }}
+      openMenuFileId = null;
+      await refreshFiles();
+    }}
+
     form.addEventListener('submit', async (event) => {{
       event.preventDefault();
-      await parseSelectedJob();
+      await parseSelectedFile();
     }});
 
     uploadTrigger.addEventListener('click', () => {{
@@ -1570,12 +1849,36 @@ def render_page(
     }});
 
     jobList.addEventListener('click', async (event) => {{
-      const row = event.target.closest('[data-job-id]');
+      const menuButton = event.target.closest('[data-file-menu-id]');
+      if (menuButton) {{
+        openMenuFileId = openMenuFileId === menuButton.dataset.fileMenuId ? null : menuButton.dataset.fileMenuId;
+        await refreshFiles();
+        return;
+      }}
+      const action = event.target.closest('[data-file-action]');
+      if (action) {{
+        const row = event.target.closest('[data-file-id]');
+        if (!row) {{
+          return;
+        }}
+        selectedFileId = row.dataset.fileId;
+        openMenuFileId = null;
+        await refreshFiles();
+        if (action.dataset.fileAction === 'details') {{
+          await showFileDetails(row.dataset.fileId);
+        }} else if (action.dataset.fileAction === 'delete') {{
+          await deleteFile(row.dataset.fileId);
+        }}
+        return;
+      }}
+      const row = event.target.closest('[data-file-id]');
       if (!row) {{
         return;
       }}
-      selectedJobId = row.dataset.jobId;
-      await refreshJobs();
+      selectedFileId = row.dataset.fileId;
+      selectedJobId = null;
+      openMenuFileId = null;
+      await refreshFiles();
     }});
 
     tabButtons.forEach((button) => {{
@@ -1585,8 +1888,9 @@ def render_page(
       }});
     }});
 
-    refreshJobs();
-    setInterval(refreshJobs, 2000);
+    refreshFiles();
+    setInterval(refreshFiles, 2000);
+
   </script>
 </body>
 </html>"""
