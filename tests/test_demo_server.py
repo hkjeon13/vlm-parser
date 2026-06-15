@@ -321,6 +321,7 @@ def test_render_page_uses_document_workspace_layout():
     assert "<h2>선택 파일</h2>" in html
     assert "파일을 드래그하여 업로드" not in html
     assert "upload-dropzone" not in html
+    assert 'id="rail-upload-trigger"' in html
     assert "parse-step" not in html
     assert "pdf-controls" not in html
 
@@ -374,10 +375,14 @@ def test_render_page_supports_collapsible_and_resizable_workspace():
 def test_render_page_links_upload_button_to_file_input():
     html = render_page(config=DemoConfig())
 
-    assert 'id="upload-trigger"' in html
+    assert 'id="rail-upload-trigger"' in html
+    assert 'aria-label="파일 업로드"' in html
+    assert 'id="upload-trigger"' not in html
     assert 'id="pdf-input"' in html
     assert 'name="pdf"' in html
-    assert 'id="selected-file-name"' in html
+    assert 'name="render_dpi" type="hidden" value="180"' in html
+    assert "Render DPI" not in html
+    assert 'id="selected-file-name"' not in html
     assert "fileInput.click()" in html
     assert "uploadSelectedFile()" in html
     assert "parseSelectedFile()" in html

@@ -998,8 +998,8 @@ def render_page(
     )
     model_select = (
         f"""
-        <label>
-          Model
+        <label class="model-control">
+          <span>Model</span>
           <select id="model-select">
             <option value="{model_value}">Configured default ({model_value or "none"})</option>
             {model_options}
@@ -1012,8 +1012,8 @@ def render_page(
     model_field = f'<input id="model-field" name="model" type="hidden" value="{model_value}">'
     model_manual = (
         f"""
-        <label>
-          Model ID
+        <label class="model-control">
+          <span>Model ID</span>
           <input id="model-input" type="text" value="{model_value}" placeholder="provider/model-id">
         </label>
     """
@@ -1175,36 +1175,12 @@ def render_page(
       justify-self: stretch;
       height: 100%;
     }}
-    .upload-button {{
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      min-height: 36px;
-      border: 1px solid var(--accent);
-      border-radius: 7px;
-      background: #fff;
-      color: var(--accent);
-      padding: 0 12px;
-      font-weight: 800;
-    }}
     #pdf-input {{
       position: absolute;
       width: 1px;
       height: 1px;
       opacity: 0;
       pointer-events: none;
-    }}
-    .selected-file-name {{
-      flex: 0 1 150px;
-      min-width: 0;
-      max-width: 180px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 700;
     }}
     .upload-bar .options {{
       display: flex;
@@ -1224,11 +1200,7 @@ def render_page(
     .upload-bar .check {{
       display: none;
     }}
-    .upload-bar .options > label:first-child {{
-      display: grid;
-      flex: 0 0 86px;
-    }}
-    .upload-bar .options label.check:nth-of-type(4) {{
+    .upload-bar .options label.check {{
       display: flex;
       min-height: 36px;
       align-items: center;
@@ -1237,35 +1209,28 @@ def render_page(
       font-size: 12px;
       font-weight: 750;
       white-space: nowrap;
-      margin-top: 15px;
-    }}
-    .upload-bar input[type="number"] {{
-      height: 34px;
-      padding: 4px 8px;
-      border-color: transparent;
-      background: transparent;
-      font-size: 14px;
     }}
     .upload-bar .options label:not(.check) {{
-      display: grid;
-      gap: 3px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
       min-width: 0;
       color: var(--muted);
       font-size: 12px;
       font-weight: 750;
       line-height: 1.1;
-      align-self: stretch;
-      align-content: end;
+      white-space: nowrap;
     }}
     .upload-bar .options label:not(.check):has(select) {{
       flex: 1 1 420px;
       max-width: 720px;
     }}
     .upload-bar .options label:not(.check):has(input[type="text"]) {{
-      flex: 0 1 220px;
+      flex: 0 1 280px;
     }}
     .upload-bar select,
     .upload-bar input[type="text"] {{
+      flex: 1 1 auto;
       width: 100%;
       min-width: 0;
       height: 36px;
@@ -1389,6 +1354,7 @@ def render_page(
       min-height: 0;
     }}
     .jobs header {{
+      position: relative;
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -1832,7 +1798,6 @@ def render_page(
       .brand {{ grid-area: title; min-width: 0; }}
       .account-pill {{ display: none; }}
       .upload-bar {{ grid-area: upload; width: 100%; flex-wrap: wrap; }}
-      .selected-file-name {{ max-width: none; }}
       .upload-bar .options {{
         flex-wrap: wrap;
         justify-content: stretch;
@@ -1869,7 +1834,7 @@ def render_page(
     @media (max-width: 430px) {{
       h1 {{ font-size: 15px; }}
       .topbar {{ grid-template-columns: 1fr; }}
-      .upload-button, .upload-bar button[type="submit"] {{ padding: 0 10px; }}
+      .upload-bar button[type="submit"] {{ padding: 0 10px; }}
       .tab-download-links a {{ padding: 4px 7px; }}
     }}
   </style>
@@ -1889,19 +1854,14 @@ def render_page(
       </div>
       <form id="upload-form" class="upload-bar" action="/api/files" method="post" enctype="multipart/form-data">
         <input id="pdf-input" name="pdf" type="file" accept="application/pdf,.pdf">
-        <button id="upload-trigger" class="upload-button" type="button">업로드</button>
-        <span id="selected-file-name" class="selected-file-name">선택된 파일 없음</span>
+        <input name="render_dpi" type="hidden" value="180">
+        <input name="trim" type="hidden" value="on">
+        <input name="auto_slice" type="hidden" value="on">
         <div class="options">
-          <label>
-            Render DPI
-            <input name="render_dpi" type="number" min="72" max="300" step="12" value="180">
-          </label>
-          <label class="check"><input name="trim" type="checkbox" checked> Trim margins</label>
-          <label class="check"><input name="auto_slice" type="checkbox" checked> Auto slice pages</label>
-          <label class="check"><input name="use_vlm" type="checkbox"> Use VLM rewrite</label>
           {model_select}
           {model_manual}
           {model_field}
+          <label class="check"><input name="use_vlm" type="checkbox"> Use VLM rewrite</label>
           <button type="submit">실행</button>
         </div>
       </form>
@@ -1916,7 +1876,7 @@ def render_page(
             <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Files 사이드바 접기" title="Files 사이드바 접기">‹</button>
             <h2>파일</h2>
           </div>
-          <button class="file-menu-button" type="button" title="파일 메뉴" aria-label="파일 메뉴">⋯</button>
+          <button id="rail-upload-trigger" class="file-menu-button" type="button" title="파일 업로드" aria-label="파일 업로드">⋯</button>
         </header>
         <input class="rail-search" type="search" placeholder="파일명 검색" aria-label="파일명 검색">
         <div id="job-list" class="job-list">
@@ -1974,9 +1934,8 @@ def render_page(
     const modelSelect = document.getElementById('model-select');
     const modelInput = document.getElementById('model-input');
     const modelField = document.getElementById('model-field');
-    const uploadTrigger = document.getElementById('upload-trigger');
     const fileInput = document.getElementById('pdf-input');
-    const selectedFileName = document.getElementById('selected-file-name');
+    const railUploadTrigger = document.getElementById('rail-upload-trigger');
     const workspace = document.querySelector('.workspace');
     const sidebarToggle = document.getElementById('sidebar-toggle');
     const workspaceResizers = Array.from(document.querySelectorAll('[data-resizer]'));
@@ -2477,7 +2436,7 @@ def render_page(
       }});
     }});
 
-    uploadTrigger.addEventListener('click', () => {{
+    railUploadTrigger.addEventListener('click', () => {{
       fileInput.click();
     }});
 
@@ -2485,9 +2444,6 @@ def render_page(
     modelInput?.addEventListener('input', syncModelField);
 
     fileInput.addEventListener('change', async () => {{
-      selectedFileName.textContent = fileInput.files.length
-        ? fileInput.files[0].name
-        : '선택된 파일 없음';
       if (fileInput.files.length) {{
         await uploadSelectedFile();
       }}
