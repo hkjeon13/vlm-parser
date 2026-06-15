@@ -1036,12 +1036,27 @@ def render_page(
       overflow-wrap: anywhere;
     }}
     .workspace {{
+      --rail-width: 33.333%;
+      --pdf-width: 33.333%;
+      --result-width: 33.333%;
       display: grid;
-      grid-template-columns: 304px minmax(420px, 1fr) minmax(520px, 42vw);
+      grid-template-columns: var(--rail-width) var(--pdf-width) 6px var(--result-width);
       gap: 0;
       align-items: stretch;
       min-height: 0;
       height: 100%;
+    }}
+    .workspace.rail-collapsed {{
+      --rail-width: 44px;
+    }}
+    .workspace.rail-collapsed .left-rail h2,
+    .workspace.rail-collapsed .left-rail .badge,
+    .workspace.rail-collapsed .job-list {{
+      display: none;
+    }}
+    .workspace.rail-collapsed .jobs header {{
+      justify-content: center;
+      padding: 12px 6px;
     }}
     .jobs {{
       border: 1px solid var(--line);
@@ -1062,6 +1077,38 @@ def render_page(
       margin: 0;
       padding: 12px 14px;
       border-bottom: 1px solid var(--line);
+    }}
+    .rail-title {{
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }}
+    .sidebar-toggle {{
+      display: inline-grid;
+      place-items: center;
+      width: 28px;
+      min-height: 28px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--muted);
+      padding: 0;
+      font-size: 16px;
+      line-height: 1;
+    }}
+    .sidebar-toggle:hover {{ background: #eef2f7; color: var(--ink); }}
+    .workspace-resizer {{
+      min-width: 6px;
+      cursor: col-resize;
+      background: #e2e8f0;
+      border-right: 1px solid #cbd5e1;
+      border-left: 1px solid #cbd5e1;
+    }}
+    .workspace-resizer:hover,
+    .workspace-resizer.active {{
+      background: var(--accent);
+      border-color: var(--accent);
     }}
     .job-list {{
       display: grid;
@@ -1401,6 +1448,10 @@ def render_page(
       .upload-bar .options label.check:nth-of-type(4) {{ flex: 1 1 auto; min-width: 0; white-space: normal; }}
       .upload-bar button[type="submit"] {{ flex: 0 0 auto; }}
       .workspace {{ display: flex; flex-direction: column; height: auto; }}
+      .workspace.rail-collapsed .job-list {{ display: grid; }}
+      .workspace.rail-collapsed .left-rail h2,
+      .workspace.rail-collapsed .left-rail .badge {{ display: inline-flex; }}
+      .workspace-resizer {{ display: none; }}
       .left-rail {{ max-height: 220px; border-width: 0 0 1px 0; }}
       .jobs header {{ padding: 10px 12px; }}
       .job-list {{ height: auto; max-height: 164px; }}
@@ -1454,7 +1505,10 @@ def render_page(
     <section class="workspace">
       <aside class="jobs left-rail">
         <header>
-          <h2>Files</h2>
+          <div class="rail-title">
+            <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Files 사이드바 접기" title="Files 사이드바 접기">‹</button>
+            <h2>Files</h2>
+          </div>
           <span id="job-count" class="badge">0</span>
         </header>
         <div id="job-list" class="job-list">
@@ -1466,6 +1520,7 @@ def render_page(
           <div class="pdf-empty">PDF를 업로드하면 이 영역에서 원문을 확인할 수 있습니다.</div>
         </div>
       </section>
+      <div class="workspace-resizer" data-resizer="pdf-result" role="separator" aria-label="PDF와 결과 패널 너비 조정" aria-orientation="vertical" tabindex="0"></div>
       <section class="preview result-panel">
         <div class="preview-toolbar">
           <strong id="selected-title">Select a completed job</strong>
@@ -1490,6 +1545,9 @@ def render_page(
     const uploadTrigger = document.getElementById('upload-trigger');
     const fileInput = document.getElementById('pdf-input');
     const selectedFileName = document.getElementById('selected-file-name');
+    const workspace = document.querySelector('.workspace');
+    const sidebarToggle = document.getElementById('sidebar-toggle');
+    const workspaceResizers = Array.from(document.querySelectorAll('[data-resizer]'));
     const jobList = document.getElementById('job-list');
     const jobCount = document.getElementById('job-count');
     const selectedTitle = document.getElementById('selected-title');
@@ -1508,6 +1566,7 @@ def render_page(
     let renderedPdfFileId = null;
     let renderedResultKey = null;
     let openMenuFileId = null;
+    let activeResize = null;
     let activeTab = 'preview';
 
     function escapeHtml(value) {{
@@ -1585,6 +1644,29 @@ def render_page(
 
     function resultRenderKey(job) {{
       return `${{job.id}}:${{job.status}}:${{job.updated_at}}:${{activeTab}}`;
+    }}
+
+    function clamp(value, min, max) {{
+      return Math.min(Math.max(value, min), max);
+    }}
+
+    function setWorkspaceWidths(pdfWidth, resultWidth) {{
+      workspace.style.setProperty('--pdf-width', `${{Math.round(pdfWidth)}}px`);
+      workspace.style.setProperty('--result-width', `${{Math.round(resultWidth)}}px`);
+    }}
+
+    function resizePdfResult(clientX) {{
+      if (!workspace) {{
+        return;
+      }}
+      const workspaceRect = workspace.getBoundingClientRect();
+      const railWidth = workspace.classList.contains('rail-collapsed')
+        ? 44
+        : workspace.querySelector('.left-rail')?.getBoundingClientRect().width || 0;
+      const available = Math.max(680, workspaceRect.width - railWidth - 6);
+      const relativeX = clientX - workspaceRect.left - railWidth;
+      const pdfWidth = clamp(relativeX, 320, available - 360);
+      setWorkspaceWidths(pdfWidth, available - pdfWidth);
     }}
 
     async function refreshFiles() {{
@@ -1833,6 +1915,43 @@ def render_page(
     form.addEventListener('submit', async (event) => {{
       event.preventDefault();
       await parseSelectedFile();
+    }});
+
+    sidebarToggle.addEventListener('click', () => {{
+      const collapsed = workspace.classList.toggle('rail-collapsed');
+      sidebarToggle.textContent = collapsed ? '›' : '‹';
+      sidebarToggle.setAttribute('aria-label', collapsed ? 'Files 사이드바 펼치기' : 'Files 사이드바 접기');
+      sidebarToggle.setAttribute('title', collapsed ? 'Files 사이드바 펼치기' : 'Files 사이드바 접기');
+    }});
+
+    workspaceResizers.forEach((resizer) => {{
+      resizer.addEventListener('pointerdown', (event) => {{
+        activeResize = resizer.dataset.resizer;
+        resizer.classList.add('active');
+        resizer.setPointerCapture(event.pointerId);
+        resizePdfResult(event.clientX);
+      }});
+      resizer.addEventListener('pointermove', (event) => {{
+        if (activeResize !== resizer.dataset.resizer) {{
+          return;
+        }}
+        resizePdfResult(event.clientX);
+      }});
+      resizer.addEventListener('pointerup', (event) => {{
+        activeResize = null;
+        resizer.classList.remove('active');
+        resizer.releasePointerCapture(event.pointerId);
+      }});
+      resizer.addEventListener('keydown', (event) => {{
+        if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) {{
+          return;
+        }}
+        event.preventDefault();
+        const rect = workspace.getBoundingClientRect();
+        const pdfRect = document.querySelector('.pdf-stage').getBoundingClientRect();
+        const direction = event.key === 'ArrowLeft' ? -32 : 32;
+        resizePdfResult(pdfRect.right + direction);
+      }});
     }});
 
     uploadTrigger.addEventListener('click', () => {{
