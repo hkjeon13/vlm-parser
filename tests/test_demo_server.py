@@ -257,6 +257,20 @@ def test_job_store_tracks_parse_progress(tmp_path: Path):
     assert summary["progress"]["label"] == "Parsed page 2 of 5"
 
 
+def test_job_store_reports_real_storage_usage(tmp_path: Path):
+    store = JobStore(tmp_path, storage_limit_bytes=10)
+    store.create_file(UploadedFile(filename="first.pdf", content=b"1234"))
+    store.create_file(UploadedFile(filename="second.pdf", content=b"123"))
+
+    usage = store.storage_usage()
+
+    assert usage == {
+        "used_bytes": 7,
+        "limit_bytes": 10,
+        "percent": 70,
+    }
+
+
 def test_process_job_stores_json_and_markdown_results(tmp_path: Path):
     store = JobStore(tmp_path)
     file = store.create_file(UploadedFile(filename="sample.pdf", content=b"%PDF-1.7"))
