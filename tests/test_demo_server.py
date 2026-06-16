@@ -387,6 +387,8 @@ def test_render_page_supports_collapsible_and_resizable_workspace():
     assert "setPointerCapture(event.pointerId)" in html
     assert "grid-template-columns: var(--rail-width) var(--pdf-width) 6px var(--result-width);" in html
     assert ".workspace.rail-collapsed" in html
+    assert ".workspace.rail-collapsed .rail-search" in html
+    assert ".workspace.rail-collapsed .rail-detail" in html
 
 
 def test_render_page_links_upload_button_to_file_input():

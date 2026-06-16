@@ -1342,6 +1342,8 @@ def render_page(
       --rail-width: 44px;
     }}
     .workspace.rail-collapsed .left-rail h2,
+    .workspace.rail-collapsed .rail-search,
+    .workspace.rail-collapsed .rail-detail,
     .workspace.rail-collapsed .left-rail .storage-meter,
     .workspace.rail-collapsed .job-list {{
       display: none;
