@@ -410,6 +410,7 @@ def test_render_page_links_upload_button_to_file_input():
     assert 'name="max_page_workers" type="number" min="1" max="16" value="4"' in html
     assert "Render DPI" not in html
     assert 'id="selected-file-name"' not in html
+    assert "selectedFileName" not in html
     assert 'id="upload-menu"' in html
     assert 'data-upload-action="select-file"' in html
     assert "toggleUploadMenu()" in html

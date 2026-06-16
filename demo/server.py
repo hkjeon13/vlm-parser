@@ -2509,7 +2509,6 @@ def render_page(
         selectedFileId = data.file.id;
         selectedJobId = null;
         form.reset();
-        selectedFileName.textContent = 'PDF, PNG, JPG (최대 100MB)';
         form.querySelector('input[name="trim"]').checked = true;
         form.querySelector('input[name="auto_slice"]').checked = true;
         syncModelField();
