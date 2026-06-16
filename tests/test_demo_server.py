@@ -490,6 +490,8 @@ def test_render_page_links_upload_button_to_file_input():
     assert 'name="render_dpi" type="hidden" value="180"' in html
     assert 'name="max_page_workers" type="number" min="1" max="16" value="4"' in html
     assert 'name="reasoning_effort"' in html
+    assert 'form="upload-form" name="max_page_workers"' in html
+    assert 'form="upload-form" name="reasoning_effort"' in html
     assert '<option value="auto" selected>Think auto</option>' in html
     assert '<option value="off">Think off</option>' in html
     assert '<option value="low">Think low</option>' in html
@@ -497,12 +499,13 @@ def test_render_page_links_upload_button_to_file_input():
     assert '<option value="high">Think high</option>' in html
     assert 'class="reasoning-control"' in html
     assert 'class="page-workers-control"' in html
-    assert ".upload-bar .options label.reasoning-control {" in html
-    assert "margin-left: 15px;" in html
-    assert ".upload-bar .options label.page-workers-control {" in html
-    assert "margin-left: 12px;" in html
-    assert ".upload-bar .options label.reasoning-control select {" in html
-    assert "width: 170px;" in html
+    assert html.index('class="vlm-settings-dialog"') < html.index('class="reasoning-control"')
+    assert html.index('class="vlm-settings-dialog"') < html.index('class="page-workers-control"')
+    assert 'id="vlm-settings-modal"' in html
+    assert 'data-upload-action="open-vlm-settings"' in html
+    assert 'VLM 설정' in html
+    assert "toggleVlmSettingsModal(true)" in html
+    assert "toggleVlmSettingsModal(false)" in html
     assert "Render DPI" not in html
     assert 'id="selected-file-name"' not in html
     assert "selectedFileName" not in html
@@ -511,7 +514,15 @@ def test_render_page_links_upload_button_to_file_input():
     assert "toggleUploadMenu()" in html
     assert "uploadSelectedFile()" in html
     assert "parseSelectedFile()" in html
+    assert "event.stopPropagation();" in html
     assert "fileInput.addEventListener('change', async" in html
+    upload_form = html.split('<form id="upload-form"', 1)[1].split('</form>', 1)[0]
+    assert 'class="reasoning-control"' not in upload_form
+    assert 'class="page-workers-control"' not in upload_form
+    assert 'id="model-select"' not in upload_form
+    assert 'id="model-input"' not in upload_form
+    assert 'Use VLM</label>' in upload_form
+    assert '<button type="submit">실행</button>' in upload_form
 
 
 def test_render_page_centers_empty_states_and_upload_ellipsis():

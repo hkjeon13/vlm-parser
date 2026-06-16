@@ -1455,6 +1455,95 @@ def render_page(
       padding: 4px 10px;
       text-overflow: ellipsis;
     }}
+    .modal-backdrop {{
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: grid;
+      place-items: center;
+      background: rgba(15,23,42,0.32);
+      padding: 18px;
+    }}
+    .modal-backdrop[hidden] {{ display: none; }}
+    .vlm-settings-dialog {{
+      width: min(520px, 100%);
+      max-height: min(720px, calc(100vh - 36px));
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 22px 60px rgba(15,23,42,0.24);
+      overflow: hidden;
+    }}
+    .modal-header,
+    .modal-footer {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+    }}
+    .modal-footer {{
+      justify-content: flex-end;
+      border-top: 1px solid var(--line);
+      border-bottom: 0;
+    }}
+    .modal-header h2 {{
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.2;
+    }}
+    .modal-close {{
+      display: inline-grid;
+      place-items: center;
+      width: 32px;
+      min-height: 32px;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      padding: 0;
+      font-size: 22px;
+      line-height: 1;
+    }}
+    .modal-close:hover {{ background: #eef2f7; color: var(--ink); }}
+    .settings-form {{
+      display: grid;
+      gap: 14px;
+      overflow: auto;
+      padding: 16px;
+    }}
+    .settings-form label:not(.check) {{
+      display: grid;
+      gap: 7px;
+      min-width: 0;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+    }}
+    .settings-form select,
+    .settings-form input[type="text"],
+    .settings-form input[type="number"] {{
+      width: 100%;
+      min-width: 0;
+      height: 38px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      font-size: 13px;
+      padding: 4px 10px;
+    }}
+    .modal-secondary {{
+      min-height: 36px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      padding: 0 14px;
+    }}
+    .modal-secondary:hover {{ background: #f1f5f9; }}
     .upload-bar button[type="submit"] {{
       min-height: 36px;
       min-width: 68px;
@@ -2162,20 +2251,8 @@ def render_page(
         <input name="render_dpi" type="hidden" value="180">
         <input name="trim" type="hidden" value="on">
         <input name="auto_slice" type="hidden" value="on">
+        {model_field}
         <div class="options">
-          {model_select}
-          {model_manual}
-          {model_field}
-          <label class="reasoning-control">Think
-            <select name="reasoning_effort">
-              <option value="auto" selected>Think auto</option>
-              <option value="off">Think off</option>
-              <option value="low">Think low</option>
-              <option value="medium">Think medium</option>
-              <option value="high">Think high</option>
-            </select>
-          </label>
-          <label class="page-workers-control">Page workers <input name="max_page_workers" type="number" min="1" max="16" value="4"></label>
           <label class="check"><input name="use_vlm" type="checkbox"> Use VLM</label>
           <button type="submit">실행</button>
         </div>
@@ -2195,6 +2272,7 @@ def render_page(
           </button>
           <div id="upload-menu" class="upload-menu" hidden>
             <button type="button" data-upload-action="select-file">파일 업로드</button>
+            <button type="button" data-upload-action="open-vlm-settings">VLM 설정</button>
           </div>
         </header>
         <input class="rail-search" type="search" placeholder="파일명 검색" aria-label="파일명 검색">
@@ -2251,6 +2329,33 @@ def render_page(
       </section>
     </section>
     {result_section}
+    <div id="vlm-settings-modal" class="modal-backdrop" hidden>
+      <section class="vlm-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="vlm-settings-title">
+        <header class="modal-header">
+          <h2 id="vlm-settings-title">VLM 설정</h2>
+          <button id="vlm-settings-close" class="modal-close" type="button" aria-label="닫기">×</button>
+        </header>
+        <div class="settings-form">
+          {model_select}
+          {model_manual}
+          <label class="reasoning-control">Think
+            <select form="upload-form" name="reasoning_effort">
+              <option value="auto" selected>Think auto</option>
+              <option value="off">Think off</option>
+              <option value="low">Think low</option>
+              <option value="medium">Think medium</option>
+              <option value="high">Think high</option>
+            </select>
+          </label>
+          <label class="page-workers-control">Page workers
+            <input form="upload-form" name="max_page_workers" type="number" min="1" max="16" value="4">
+          </label>
+        </div>
+        <footer class="modal-footer">
+          <button id="vlm-settings-done" class="modal-secondary" type="button">닫기</button>
+        </footer>
+      </section>
+    </div>
   </main>
   <script>
     const form = document.getElementById('upload-form');
@@ -2260,6 +2365,9 @@ def render_page(
     const fileInput = document.getElementById('pdf-input');
     const railUploadTrigger = document.getElementById('rail-upload-trigger');
     const uploadMenu = document.getElementById('upload-menu');
+    const vlmSettingsModal = document.getElementById('vlm-settings-modal');
+    const vlmSettingsClose = document.getElementById('vlm-settings-close');
+    const vlmSettingsDone = document.getElementById('vlm-settings-done');
     const workspace = document.querySelector('.workspace');
     const sidebarToggle = document.getElementById('sidebar-toggle');
     const workspaceResizers = Array.from(document.querySelectorAll('[data-resizer]'));
@@ -2403,6 +2511,18 @@ def render_page(
       uploadMenuOpen = typeof forceOpen === 'boolean' ? forceOpen : !uploadMenuOpen;
       uploadMenu.hidden = !uploadMenuOpen;
       railUploadTrigger.setAttribute('aria-expanded', uploadMenuOpen ? 'true' : 'false');
+    }}
+
+    function toggleVlmSettingsModal(forceOpen) {{
+      const isOpen = typeof forceOpen === 'boolean' ? forceOpen : vlmSettingsModal.hidden;
+      vlmSettingsModal.hidden = !isOpen;
+      if (isOpen) {{
+        syncModelField();
+        const firstField = vlmSettingsModal.querySelector('select, input, button');
+        firstField?.focus();
+      }} else {{
+        railUploadTrigger.focus();
+      }}
     }}
 
     function selectedFileStatusText() {{
@@ -2821,11 +2941,13 @@ def render_page(
       }});
     }});
 
-    railUploadTrigger.addEventListener('click', () => {{
+    railUploadTrigger.addEventListener('click', (event) => {{
+      event.stopPropagation();
       toggleUploadMenu();
     }});
 
     uploadMenu.addEventListener('click', (event) => {{
+      event.stopPropagation();
       const action = event.target.closest('[data-upload-action]');
       if (!action) {{
         return;
@@ -2833,11 +2955,21 @@ def render_page(
       if (action.dataset.uploadAction === 'select-file') {{
         toggleUploadMenu(false);
         fileInput.click();
+      }} else if (action.dataset.uploadAction === 'open-vlm-settings') {{
+        toggleUploadMenu(false);
+        toggleVlmSettingsModal(true);
       }}
     }});
 
     modelSelect?.addEventListener('change', syncModelField);
     modelInput?.addEventListener('input', syncModelField);
+    vlmSettingsClose.addEventListener('click', () => toggleVlmSettingsModal(false));
+    vlmSettingsDone.addEventListener('click', () => toggleVlmSettingsModal(false));
+    vlmSettingsModal.addEventListener('click', (event) => {{
+      if (event.target === vlmSettingsModal) {{
+        toggleVlmSettingsModal(false);
+      }}
+    }});
 
     fileInput.addEventListener('change', async () => {{
       if (fileInput.files.length) {{
@@ -2850,6 +2982,12 @@ def render_page(
         return;
       }}
       toggleUploadMenu(false);
+    }});
+
+    document.addEventListener('keydown', (event) => {{
+      if (event.key === 'Escape' && !vlmSettingsModal.hidden) {{
+        toggleVlmSettingsModal(false);
+      }}
     }});
 
     jobList.addEventListener('click', async (event) => {{
