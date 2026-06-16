@@ -456,6 +456,14 @@ def test_render_page_links_upload_button_to_file_input():
     assert '<option value="low">Think low</option>' in html
     assert '<option value="medium">Think medium</option>' in html
     assert '<option value="high">Think high</option>' in html
+    assert 'class="reasoning-control"' in html
+    assert 'class="page-workers-control"' in html
+    assert ".upload-bar .options label.reasoning-control {" in html
+    assert "margin-left: 15px;" in html
+    assert ".upload-bar .options label.page-workers-control {" in html
+    assert "margin-left: 12px;" in html
+    assert ".upload-bar .options label.reasoning-control select {" in html
+    assert "width: 170px;" in html
     assert "Render DPI" not in html
     assert 'id="selected-file-name"' not in html
     assert "selectedFileName" not in html

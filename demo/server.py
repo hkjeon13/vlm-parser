@@ -1286,6 +1286,22 @@ def render_page(
     .upload-bar .options label:not(.check):has(input[type="text"]) {{
       flex: 0 1 280px;
     }}
+    .upload-bar .options label.reasoning-control {{
+      flex: 0 0 auto;
+      margin-left: 15px;
+      max-width: none;
+      overflow: visible;
+    }}
+    .upload-bar .options label.reasoning-control select {{
+      flex: 0 0 auto;
+      width: 170px;
+    }}
+    .upload-bar .options label.page-workers-control {{
+      flex: 0 0 auto;
+      margin-left: 12px;
+      max-width: none;
+      overflow: visible;
+    }}
     .upload-bar select,
     .upload-bar input[type="text"] {{
       flex: 1 1 auto;
@@ -1942,6 +1958,13 @@ def render_page(
         flex: 1 1 100%;
         max-width: none;
       }}
+      .upload-bar .options label.reasoning-control,
+      .upload-bar .options label.page-workers-control {{
+        margin-left: 0;
+      }}
+      .upload-bar .options label.reasoning-control select {{
+        width: 100%;
+      }}
       .upload-bar .options label.check {{
         flex: 1 1 auto;
         min-width: 0;
@@ -2006,7 +2029,7 @@ def render_page(
           {model_select}
           {model_manual}
           {model_field}
-          <label>Think
+          <label class="reasoning-control">Think
             <select name="reasoning_effort">
               <option value="auto" selected>Think auto</option>
               <option value="off">Think off</option>
@@ -2015,7 +2038,7 @@ def render_page(
               <option value="high">Think high</option>
             </select>
           </label>
-          <label>Page workers <input name="max_page_workers" type="number" min="1" max="16" value="4"></label>
+          <label class="page-workers-control">Page workers <input name="max_page_workers" type="number" min="1" max="16" value="4"></label>
           <label class="check"><input name="use_vlm" type="checkbox"> Use VLM</label>
           <button type="submit">실행</button>
         </div>
