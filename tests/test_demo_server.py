@@ -599,8 +599,12 @@ def test_render_page_includes_mobile_friendly_layout_rules():
     assert "grid-template-areas: \"title\" \"upload\";" in html
     assert ".brand { grid-area: title; min-width: 0; }" in html
     assert ".upload-bar { grid-area: upload; width: 100%; flex-wrap: wrap; }" in html
+    assert "grid-template-columns: auto auto;" in html
     assert "flex: 1 1 100%;" in html
     assert ".upload-bar .options label.check {" in html
+    assert ".pdf-stage { min-height: 380px; border-right: 0; border-bottom: 1px solid var(--line); }" in html
+    assert ".pdf-empty { width: min(260px, calc(100% - 32px)); padding: 20px; overflow-wrap: anywhere; }" in html
+    assert ".pdf-shell { width: 100%; height: min(50vh, 420px); min-height: 340px; }" in html
     assert ".workspace { display: flex; flex-direction: column; height: auto; }" in html
     assert ".left-rail { max-height: 220px; border-width: 0 0 1px 0; }" in html
     assert ".result-tabs { overflow-x: auto; flex-wrap: nowrap; padding: 0 12px; }" in html

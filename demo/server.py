@@ -1923,6 +1923,7 @@ def render_page(
       align-self: center;
       justify-self: center;
       width: min(520px, 80%);
+      max-width: calc(100% - 24px);
       border: 1px dashed #9aa8ba;
       border-radius: 10px;
       background: rgba(255,255,255,0.75);
@@ -1930,6 +1931,7 @@ def render_page(
       padding: 28px;
       text-align: center;
       font-weight: 700;
+      overflow-wrap: anywhere;
     }}
     .pdf-shell {{
       width: 100%;
@@ -2174,8 +2176,10 @@ def render_page(
       .brand {{ grid-area: title; min-width: 0; }}
       .upload-bar {{ grid-area: upload; width: 100%; flex-wrap: wrap; }}
       .upload-bar .options {{
-        flex-wrap: wrap;
-        justify-content: stretch;
+        display: grid;
+        grid-template-columns: auto auto;
+        flex-wrap: nowrap;
+        justify-content: start;
         align-items: center;
         gap: 8px;
       }}
@@ -2192,7 +2196,7 @@ def render_page(
         width: 100%;
       }}
       .upload-bar .options label.check {{
-        flex: 1 1 auto;
+        flex: 0 1 auto;
         min-width: 0;
         white-space: nowrap;
       }}
@@ -2206,9 +2210,10 @@ def render_page(
       .storage-meter, .rail-detail {{ display: none; }}
       .jobs header {{ padding: 10px 12px; }}
       .job-list {{ height: auto; max-height: 164px; }}
-      .pdf-stage {{ min-height: 520px; border-right: 0; border-bottom: 1px solid var(--line); }}
+      .pdf-stage {{ min-height: 380px; border-right: 0; border-bottom: 1px solid var(--line); }}
       .pdf-canvas {{ padding: 8px; }}
-      .pdf-shell {{ width: 100%; height: min(62vh, 520px); min-height: 420px; }}
+      .pdf-empty {{ width: min(260px, calc(100% - 32px)); padding: 20px; overflow-wrap: anywhere; }}
+      .pdf-shell {{ width: 100%; height: min(50vh, 420px); min-height: 340px; }}
       .result-panel {{ min-height: 560px; }}
       .preview-toolbar {{ padding: 14px 12px 10px; }}
       .result-tabs {{ overflow-x: auto; flex-wrap: nowrap; padding: 0 12px; }}
@@ -2229,6 +2234,8 @@ def render_page(
         font-size: 11px;
       }}
       .upload-bar button[type="submit"] {{ padding: 0 10px; }}
+      .pdf-stage {{ min-height: 360px; }}
+      .pdf-empty {{ width: calc(100% - 24px); padding: 18px; }}
       .tab-download-icon {{ width: 24px; height: 24px; }}
     }}
   </style>
