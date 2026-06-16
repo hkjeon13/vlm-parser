@@ -276,7 +276,7 @@ def test_process_job_stores_json_and_markdown_results(tmp_path: Path):
     file = store.create_file(UploadedFile(filename="sample.pdf", content=b"%PDF-1.7"))
     job = store.create_job(
         file.id,
-        JobOptions(use_vlm=False, render_dpi=180, trim=True, auto_slice=True, model=""),
+        JobOptions(use_vlm=False, render_dpi=180, trim=True, auto_slice=True, max_page_workers=3, model=""),
     )
 
     class FakeResult:
@@ -295,11 +295,12 @@ def test_process_job_stores_json_and_markdown_results(tmp_path: Path):
             self.progress_callback(1, 2, "Parsed page 1 of 2")
             return FakeResult()
 
-    def parser_factory(*, use_vlm, render_dpi, trim, auto_slice, config, progress_callback=None):
+    def parser_factory(*, use_vlm, render_dpi, trim, auto_slice, max_page_workers, config, progress_callback=None):
         assert use_vlm is False
         assert render_dpi == 180
         assert trim is True
         assert auto_slice is True
+        assert max_page_workers == 3
         assert config.model == ""
         assert progress_callback is not None
         return FakeParser(progress_callback)
@@ -406,6 +407,7 @@ def test_render_page_links_upload_button_to_file_input():
     assert 'id="pdf-input"' in html
     assert 'name="pdf"' in html
     assert 'name="render_dpi" type="hidden" value="180"' in html
+    assert 'name="max_page_workers" type="number" min="1" max="16" value="4"' in html
     assert "Render DPI" not in html
     assert 'id="selected-file-name"' not in html
     assert 'id="upload-menu"' in html
@@ -452,7 +454,10 @@ def test_render_page_places_download_actions_in_tab_bar():
     html = render_page(config=DemoConfig())
 
     assert 'id="tab-download-links"' in html
-    assert "tabDownloadLinks" in html
+    assert 'id="tab-md-download"' in html
+    assert 'id="tab-json-download"' in html
+    assert 'class="tab-download-icon"' in html
+    assert "updateTabDownloadLinks(job);" in html
     assert 'title="Markdown 다운로드"' in html
     assert 'title="JSON 다운로드"' in html
     assert "job.links.markdown" in html
@@ -543,10 +548,10 @@ def test_render_page_keeps_result_scroll_stable_during_polling():
 def test_render_page_keeps_download_buttons_stable_during_polling():
     html = render_page(config=DemoConfig())
 
+    download_update = html.index("updateTabDownloadLinks(job);")
     stable_check = html.index("if (renderedResultKey === resultRenderKey(job)) {")
-    download_update = html.index("tabDownloadLinks.innerHTML = `")
 
-    assert stable_check < download_update
+    assert download_update < stable_check
 
 
 def test_render_page_embeds_valid_javascript(tmp_path: Path):

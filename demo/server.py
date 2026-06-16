@@ -72,6 +72,7 @@ class JobOptions:
     render_dpi: int
     trim: bool
     auto_slice: bool
+    max_page_workers: int = 4
     model: str = ""
 
 
@@ -335,6 +336,7 @@ class JobStore:
             "render_dpi": job.options.render_dpi,
             "trim": job.options.trim,
             "auto_slice": job.options.auto_slice,
+            "max_page_workers": job.options.max_page_workers,
             "metrics": {
                 "total_seconds": metrics.get("total_seconds"),
                 "average_seconds_per_page": metrics.get("average_seconds_per_page"),
@@ -531,6 +533,7 @@ def make_parser(
     render_dpi: int,
     trim: bool,
     auto_slice: bool,
+    max_page_workers: int,
     config: DemoConfig,
     progress_callback=None,
 ) -> PdfParser:
@@ -540,6 +543,7 @@ def make_parser(
             render_dpi=render_dpi,
             trim=trim,
             auto_slice=auto_slice,
+            max_page_workers=max_page_workers,
         ),
         vlm=VlmOptions(
             enabled=use_vlm and vlm_client is not None,
@@ -577,6 +581,7 @@ def process_job(
             render_dpi=job.options.render_dpi,
             trim=job.options.trim,
             auto_slice=job.options.auto_slice,
+            max_page_workers=job.options.max_page_workers,
             config=effective_config,
             progress_callback=report_progress,
         )
@@ -974,12 +979,17 @@ def _int_field(value: str, *, default: int) -> int:
         return default
 
 
+def _bounded_int_field(value: str, *, default: int, minimum: int, maximum: int) -> int:
+    return min(maximum, max(minimum, _int_field(value, default=default)))
+
+
 def _job_options_from_fields(fields: dict[str, str]) -> JobOptions:
     return JobOptions(
         use_vlm=fields.get("use_vlm", "off") == "on",
         render_dpi=_int_field(fields.get("render_dpi", "180"), default=180),
         trim=fields.get("trim", "off") == "on",
         auto_slice=fields.get("auto_slice", "off") == "on",
+        max_page_workers=_bounded_int_field(fields.get("max_page_workers", "4"), default=4, minimum=1, maximum=16),
         model=fields.get("model", "").strip(),
     )
 
@@ -1683,9 +1693,15 @@ def render_page(
     }}
     .result-tabs {{
       display: flex;
-      align-items: flex-end;
+      align-items: flex-start;
       padding: 0 18px;
       border-bottom: 1px solid var(--line);
+      gap: 8px;
+    }}
+    .result-tab-stack {{
+      display: grid;
+      justify-items: center;
+      gap: 4px;
     }}
     .result-tabs button {{
       min-width: 96px;
@@ -1740,22 +1756,22 @@ def render_page(
       gap: 8px;
       padding-bottom: 6px;
     }}
-    .tab-download-links a {{
+    .tab-download-icon {{
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 5px;
-      min-height: 30px;
+      width: 28px;
+      height: 28px;
       border: 1px solid var(--line);
       border-radius: 6px;
-      padding: 4px 9px;
       color: var(--accent-strong);
       background: var(--panel);
       text-decoration: none;
       font-size: 12px;
       font-weight: 800;
     }}
-    .tab-download-links a:hover {{ border-color: var(--accent); }}
+    .tab-download-icon[hidden] {{ display: none; }}
+    .tab-download-icon:hover {{ border-color: var(--accent); background: #fff; }}
     .result-body {{
       min-width: 0;
       min-height: 0;
@@ -1928,7 +1944,7 @@ def render_page(
       .preview-toolbar {{ padding: 14px 12px 10px; }}
       .result-tabs {{ overflow-x: auto; flex-wrap: nowrap; padding: 0 12px; }}
       .result-tabs button {{ min-width: 84px; flex: 0 0 auto; }}
-      .tab-download-links {{ margin-left: 8px; flex: 0 0 auto; }}
+      .tab-download-icon {{ width: 26px; height: 26px; }}
       .result-body {{ min-height: 420px; padding: 12px; }}
       pre {{ min-height: 260px; max-height: none; font-size: 12px; }}
       .result-footer {{ justify-content: flex-start; overflow-wrap: anywhere; }}
@@ -1944,7 +1960,7 @@ def render_page(
         font-size: 11px;
       }}
       .upload-bar button[type="submit"] {{ padding: 0 10px; }}
-      .tab-download-links a {{ padding: 4px 7px; }}
+      .tab-download-icon {{ width: 24px; height: 24px; }}
     }}
   </style>
 </head>
@@ -1970,6 +1986,7 @@ def render_page(
           {model_select}
           {model_manual}
           {model_field}
+          <label>Page workers <input name="max_page_workers" type="number" min="1" max="16" value="4"></label>
           <label class="check"><input name="use_vlm" type="checkbox"> Use VLM</label>
           <button type="submit">실행</button>
         </div>
@@ -2030,9 +2047,19 @@ def render_page(
           <div id="download-links" class="download-links"></div>
         </div>
         <div class="result-tabs" role="tablist">
-          <button id="tab-html" class="active" type="button" data-tab="html">MD</button>
-          <button id="tab-json" type="button" data-tab="json">JSON</button>
-          <div id="tab-download-links" class="tab-download-links"></div>
+          <div class="result-tab-stack">
+            <button id="tab-html" class="active" type="button" data-tab="html">MD</button>
+            <a id="tab-md-download" class="tab-download-icon" href="#" title="Markdown 다운로드" aria-label="Markdown 다운로드" hidden>
+              <span aria-hidden="true">↓</span>
+            </a>
+          </div>
+          <div class="result-tab-stack">
+            <button id="tab-json" type="button" data-tab="json">JSON</button>
+            <a id="tab-json-download" class="tab-download-icon" href="#" title="JSON 다운로드" aria-label="JSON 다운로드" hidden>
+              <span aria-hidden="true">↓</span>
+            </a>
+          </div>
+          <div id="tab-download-links" class="tab-download-links" hidden></div>
         </div>
         <div id="preview-body" class="result-body">
           <div class="empty-state">Upload a PDF to start parsing asynchronously.</div>
@@ -2057,6 +2084,8 @@ def render_page(
     const selectedTitle = document.getElementById('selected-title');
     const downloadLinks = document.getElementById('download-links');
     const tabDownloadLinks = document.getElementById('tab-download-links');
+    const tabMdDownload = document.getElementById('tab-md-download');
+    const tabJsonDownload = document.getElementById('tab-json-download');
     const previewBody = document.getElementById('preview-body');
     const pdfCanvas = document.getElementById('pdf-canvas');
     const pdfStatusLabel = document.getElementById('pdf-status-label');
@@ -2277,6 +2306,20 @@ def render_page(
       return `${{job.id}}:${{job.status}}:${{job.updated_at}}:${{activeTab}}`;
     }}
 
+    function updateTabDownloadLinks(job) {{
+      if (!job || job.status !== 'done' || !job.links) {{
+        tabMdDownload.hidden = true;
+        tabJsonDownload.hidden = true;
+        tabMdDownload.removeAttribute('href');
+        tabJsonDownload.removeAttribute('href');
+        return;
+      }}
+      tabMdDownload.href = job.links.markdown;
+      tabJsonDownload.href = job.links.json;
+      tabMdDownload.hidden = false;
+      tabJsonDownload.hidden = false;
+    }}
+
     function clamp(value, min, max) {{
       return Math.min(Math.max(value, min), max);
     }}
@@ -2368,6 +2411,7 @@ def render_page(
       selectedTitle.textContent = file.filename;
       downloadLinks.innerHTML = '';
       tabDownloadLinks.innerHTML = '';
+      updateTabDownloadLinks(null);
       renderPdfPreview(file);
       const jobsResponse = await fetch(file.links.jobs);
       const jobsData = await jobsResponse.json();
@@ -2394,13 +2438,14 @@ def render_page(
       updateDetailPanel(selectedFile, job);
       if (job.status === 'failed') {{
         renderedResultKey = null;
+        updateTabDownloadLinks(null);
         previewBody.className = 'result-body';
         previewBody.innerHTML = `<div class="error">${{escapeHtml(job.error || 'Parsing failed.')}}</div>`;
         return;
       }}
       if (job.status !== 'done') {{
         renderedResultKey = null;
-        tabDownloadLinks.innerHTML = '';
+        updateTabDownloadLinks(null);
         previewBody.className = 'result-body';
         previewBody.innerHTML = `
           <div class="empty-state">
@@ -2410,17 +2455,10 @@ def render_page(
         `;
         return;
       }}
+      updateTabDownloadLinks(job);
       if (renderedResultKey === resultRenderKey(job)) {{
         return;
       }}
-      tabDownloadLinks.innerHTML = `
-        <a href="${{job.links.markdown}}" title="Markdown 다운로드" aria-label="Markdown 다운로드">
-          <span aria-hidden="true">↓</span><span>MD</span>
-        </a>
-        <a href="${{job.links.json}}" title="JSON 다운로드" aria-label="JSON 다운로드">
-          <span aria-hidden="true">↓</span><span>JSON</span>
-        </a>
-      `;
       const markdownResponse = await fetch(job.links.markdown);
       selectedMarkdown = await markdownResponse.text();
       const jsonResponse = await fetch(job.links.json);

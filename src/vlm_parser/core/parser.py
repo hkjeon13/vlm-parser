@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 import time
 from typing import Any, Callable
@@ -46,50 +47,37 @@ class Parser:
             if self.progress_callback is not None:
                 self.progress_callback(0, total_units, f"Preparing {total_units} pages")
 
-            for unit in units:
-                page_started_at = time.perf_counter()
-                static = self.adapter.extract_static(unit)
-                page = unit.native
-                render = self.adapter.render(unit)
-                markdown = static.text.strip()
-                vlm_result = None
-                if self.vlm.enabled and self.vlm_client is not None and render is not None:
-                    rewriter = VlmRewriter(
-                        client=self.vlm_client,
-                        limiter=GlobalVlmLimiter(self.vlm.max_concurrency),
-                        model=self.vlm.model or "",
-                    )
-                    vlm_result = rewriter.rewrite_unit(
-                        unit_id=unit.unit_id,
-                        static=static,
-                        chunks=render.chunks,
-                    )
-                    markdown = vlm_result.markdown
-                page_metrics = PageMetrics(
-                    parse_seconds=time.perf_counter() - page_started_at,
-                )
-                pages.append(
-                    PageResult(
-                        unit_id=unit.unit_id,
-                        unit_type=unit.unit_type,
-                        unit_number=unit.unit_number,
-                        page_number=unit.unit_number,
-                        width_pt=float(page.rect.width),
-                        height_pt=float(page.rect.height),
-                        rotation=int(page.rotation),
-                        static=static,
-                        render=render,
-                        vlm=vlm_result,
-                        metrics=page_metrics,
-                        markdown=markdown,
-                    )
-                )
-                if self.progress_callback is not None:
-                    self.progress_callback(
-                        len(pages),
-                        total_units,
-                        f"Parsed page {len(pages)} of {total_units}",
-                    )
+            limiter = GlobalVlmLimiter(self.vlm.max_concurrency)
+            max_workers = max(1, min(self.options.max_page_workers, total_units or 1))
+
+            if max_workers == 1:
+                for unit in units:
+                    pages.append(self._parse_unit(unit, limiter))
+                    if self.progress_callback is not None:
+                        self.progress_callback(
+                            len(pages),
+                            total_units,
+                            f"Parsed page {len(pages)} of {total_units}",
+                        )
+            else:
+                page_results: list[PageResult | None] = [None] * total_units
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    futures = {
+                        executor.submit(self._parse_unit, unit, limiter): index
+                        for index, unit in enumerate(units)
+                    }
+                    completed = 0
+                    for future in as_completed(futures):
+                        index = futures[future]
+                        page_results[index] = future.result()
+                        completed += 1
+                        if self.progress_callback is not None:
+                            self.progress_callback(
+                                completed,
+                                total_units,
+                                f"Parsed page {completed} of {total_units}",
+                            )
+                pages = [page for page in page_results if page is not None]
 
             document_markdown = "\n\n".join(page.markdown for page in pages if page.markdown)
             total_seconds = time.perf_counter() - parse_started_at
@@ -126,6 +114,43 @@ class Parser:
             )
         finally:
             self.adapter.close(document)
+
+    def _parse_unit(self, unit, limiter: GlobalVlmLimiter) -> PageResult:
+        page_started_at = time.perf_counter()
+        static = self.adapter.extract_static(unit)
+        page = unit.native
+        render = self.adapter.render(unit)
+        markdown = static.text.strip()
+        vlm_result = None
+        if self.vlm.enabled and self.vlm_client is not None and render is not None:
+            rewriter = VlmRewriter(
+                client=self.vlm_client,
+                limiter=limiter,
+                model=self.vlm.model or "",
+            )
+            vlm_result = rewriter.rewrite_unit(
+                unit_id=unit.unit_id,
+                static=static,
+                chunks=render.chunks,
+            )
+            markdown = vlm_result.markdown
+        page_metrics = PageMetrics(
+            parse_seconds=time.perf_counter() - page_started_at,
+        )
+        return PageResult(
+            unit_id=unit.unit_id,
+            unit_type=unit.unit_type,
+            unit_number=unit.unit_number,
+            page_number=unit.unit_number,
+            width_pt=float(page.rect.width),
+            height_pt=float(page.rect.height),
+            rotation=int(page.rotation),
+            static=static,
+            render=render,
+            vlm=vlm_result,
+            metrics=page_metrics,
+            markdown=markdown,
+        )
 
 
 def _vlm_token_totals(pages: list[PageResult]) -> dict[str, int]:
