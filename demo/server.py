@@ -1101,17 +1101,17 @@ def render_page(
       display: grid;
       grid-template-rows: auto minmax(0, 1fr);
       height: 100vh;
-      min-width: 1280px;
+      min-width: 1120px;
       overflow: hidden;
     }}
     .topbar {{
       display: grid;
-      grid-template-columns: minmax(260px, 330px) minmax(0, 1fr);
-      gap: 20px;
+      grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);
+      gap: 14px;
       align-items: center;
       margin: 0;
       min-height: 78px;
-      padding: 12px 26px;
+      padding: 10px 18px;
       border-bottom: 1px solid var(--line);
       background: #fff;
     }}
@@ -1208,7 +1208,7 @@ def render_page(
       align-items: center;
       justify-content: flex-end;
       flex-wrap: nowrap;
-      gap: 12px;
+      gap: 8px;
       min-width: 0;
       flex: 1 1 auto;
     }}
@@ -1243,8 +1243,8 @@ def render_page(
       white-space: nowrap;
     }}
     .upload-bar .options label:not(.check):has(select) {{
-      flex: 1 1 420px;
-      max-width: 720px;
+      flex: 1 1 360px;
+      max-width: 660px;
     }}
     .upload-bar .options label:not(.check):has(input[type="text"]) {{
       flex: 0 1 280px;

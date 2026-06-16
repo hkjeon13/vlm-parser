@@ -469,6 +469,11 @@ def test_render_page_shows_parse_progress():
 def test_render_page_includes_mobile_friendly_layout_rules():
     html = render_page(config=DemoConfig())
 
+    assert "min-width: 1120px;" in html
+    assert "grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);" in html
+    assert "padding: 10px 18px;" in html
+    assert "flex: 1 1 360px;" in html
+    assert "max-width: 660px;" in html
     assert "@media (max-width: 780px)" in html
     assert ".app-shell { min-width: 0; min-height: 100vh; height: auto; overflow: visible; display: block; }" in html
     assert ".topbar {" in html
