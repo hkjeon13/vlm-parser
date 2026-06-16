@@ -1717,15 +1717,10 @@ def render_page(
     }}
     .result-tabs {{
       display: flex;
-      align-items: flex-start;
+      align-items: flex-end;
       padding: 0 18px;
       border-bottom: 1px solid var(--line);
-      gap: 8px;
-    }}
-    .result-tab-stack {{
-      display: grid;
-      justify-items: center;
-      gap: 4px;
+      gap: 0;
     }}
     .result-tabs button {{
       min-width: 96px;
@@ -1794,6 +1789,7 @@ def render_page(
       font-size: 12px;
       font-weight: 800;
     }}
+    .tab-download-links[hidden] {{ display: none; }}
     .tab-download-icon[hidden] {{ display: none; }}
     .tab-download-icon:hover {{ border-color: var(--accent); background: #fff; }}
     .result-body {{
@@ -2080,19 +2076,13 @@ def render_page(
           <div id="download-links" class="download-links"></div>
         </div>
         <div class="result-tabs" role="tablist">
-          <div class="result-tab-stack">
-            <button id="tab-html" class="active" type="button" data-tab="html">MD</button>
-            <a id="tab-md-download" class="tab-download-icon" href="#" title="Markdown 다운로드" aria-label="Markdown 다운로드" hidden>
+          <button id="tab-html" class="active" type="button" data-tab="html">MD</button>
+          <button id="tab-json" type="button" data-tab="json">JSON</button>
+          <div id="tab-download-links" class="tab-download-links" hidden>
+            <a id="tab-active-download" class="tab-download-icon" href="#" title="Markdown 다운로드" aria-label="Markdown 다운로드">
               <span aria-hidden="true">↓</span>
             </a>
           </div>
-          <div class="result-tab-stack">
-            <button id="tab-json" type="button" data-tab="json">JSON</button>
-            <a id="tab-json-download" class="tab-download-icon" href="#" title="JSON 다운로드" aria-label="JSON 다운로드" hidden>
-              <span aria-hidden="true">↓</span>
-            </a>
-          </div>
-          <div id="tab-download-links" class="tab-download-links" hidden></div>
         </div>
         <div id="preview-body" class="result-body">
           <div class="empty-state">Upload a PDF to start parsing asynchronously.</div>
@@ -2117,8 +2107,7 @@ def render_page(
     const selectedTitle = document.getElementById('selected-title');
     const downloadLinks = document.getElementById('download-links');
     const tabDownloadLinks = document.getElementById('tab-download-links');
-    const tabMdDownload = document.getElementById('tab-md-download');
-    const tabJsonDownload = document.getElementById('tab-json-download');
+    const tabActiveDownload = document.getElementById('tab-active-download');
     const previewBody = document.getElementById('preview-body');
     const pdfCanvas = document.getElementById('pdf-canvas');
     const pdfStatusLabel = document.getElementById('pdf-status-label');
@@ -2341,16 +2330,15 @@ def render_page(
 
     function updateTabDownloadLinks(job) {{
       if (!job || job.status !== 'done' || !job.links) {{
-        tabMdDownload.hidden = true;
-        tabJsonDownload.hidden = true;
-        tabMdDownload.removeAttribute('href');
-        tabJsonDownload.removeAttribute('href');
+        tabDownloadLinks.hidden = true;
+        tabActiveDownload.removeAttribute('href');
         return;
       }}
-      tabMdDownload.href = job.links.markdown;
-      tabJsonDownload.href = job.links.json;
-      tabMdDownload.hidden = false;
-      tabJsonDownload.hidden = false;
+      const isJson = activeTab === 'json';
+      tabActiveDownload.href = activeTab === 'json' ? job.links.json : job.links.markdown;
+      tabActiveDownload.title = isJson ? 'JSON 다운로드' : 'Markdown 다운로드';
+      tabActiveDownload.setAttribute('aria-label', tabActiveDownload.title);
+      tabDownloadLinks.hidden = false;
     }}
 
     function clamp(value, min, max) {{
@@ -2507,6 +2495,7 @@ def render_page(
       if (!selectedJob || selectedJob.status !== 'done') {{
         return;
       }}
+      updateTabDownloadLinks(selectedJob);
       renderedResultKey = resultRenderKey(selectedJob);
       if (activeTab === 'json') {{
         previewBody.innerHTML = `<pre>${{escapeHtml(JSON.stringify(selectedJson, null, 2))}}</pre>`;

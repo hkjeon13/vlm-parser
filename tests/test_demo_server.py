@@ -503,12 +503,12 @@ def test_render_page_places_download_actions_in_tab_bar():
     html = render_page(config=DemoConfig())
 
     assert 'id="tab-download-links"' in html
-    assert 'id="tab-md-download"' in html
-    assert 'id="tab-json-download"' in html
+    assert 'id="tab-active-download"' in html
+    assert 'id="tab-md-download"' not in html
+    assert 'id="tab-json-download"' not in html
     assert 'class="tab-download-icon"' in html
     assert "updateTabDownloadLinks(job);" in html
-    assert 'title="Markdown 다운로드"' in html
-    assert 'title="JSON 다운로드"' in html
+    assert "activeTab === 'json' ? job.links.json : job.links.markdown" in html
     assert "job.links.markdown" in html
     assert "job.links.json" in html
     assert "file.links.jobs" in html
