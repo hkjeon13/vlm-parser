@@ -422,6 +422,8 @@ def test_render_page_centers_empty_states_and_upload_ellipsis():
     assert ".empty-state {" in html
     assert "text-align: center;" in html
     assert "place-items: center;" in html
+    assert "max-width: 100%;" in html
+    assert "overflow-wrap: anywhere;" in html
     assert "letter-spacing: 0;" in html
     assert 'aria-hidden="true">...</span>' in html
 

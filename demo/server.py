@@ -1757,6 +1757,7 @@ def render_page(
     }}
     .tab-download-links a:hover {{ border-color: var(--accent); }}
     .result-body {{
+      min-width: 0;
       min-height: 0;
       overflow: auto;
       padding: 18px;
@@ -1814,12 +1815,16 @@ def render_page(
     .empty-state {{
       display: grid;
       place-items: center;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
       border: 1px dashed var(--line);
       border-radius: 8px;
       background: #fbfbfa;
       color: var(--muted);
       padding: 24px;
       text-align: center;
+      overflow-wrap: anywhere;
     }}
     .results {{
       display: grid;
