@@ -21,6 +21,7 @@ from demo.server import (
     normalize_model_base_url,
     process_job,
     render_page,
+    render_pdf_preview_png,
 )
 
 
@@ -209,6 +210,7 @@ def test_job_store_creates_uploaded_job_with_uploaded_pdf(tmp_path: Path):
     assert store.to_summary(job)["status"] == "uploaded"
     assert store.to_summary(job)["model"] == ""
     assert store.to_summary(job)["links"]["source_pdf"].endswith("/sample.pdf")
+    assert store.to_file_summary(file)["links"]["preview_png"].endswith("/preview.png")
     assert store.to_file_summary(file)["latest_job"]["id"] == job.id
 
 
@@ -292,6 +294,22 @@ def test_job_store_reports_real_storage_usage(tmp_path: Path):
         "limit_bytes": 10,
         "percent": 70,
     }
+
+
+def test_render_pdf_preview_png_renders_first_page(tmp_path: Path):
+    import fitz
+
+    source = tmp_path / "sample.pdf"
+    doc = fitz.open()
+    page = doc.new_page(width=160, height=120)
+    page.insert_text((24, 48), "Preview")
+    doc.save(source)
+    doc.close()
+
+    preview = render_pdf_preview_png(source)
+
+    assert preview.startswith(b"\x89PNG\r\n\x1a\n")
+    assert len(preview) > 1000
 
 
 def test_job_store_restores_files_and_completed_jobs_from_disk(tmp_path: Path):
@@ -523,6 +541,18 @@ def test_render_page_links_upload_button_to_file_input():
     assert 'id="model-input"' not in upload_form
     assert 'Use VLM</label>' in upload_form
     assert '<button type="submit">실행</button>' in upload_form
+
+
+def test_render_page_uses_mobile_safe_pdf_preview_and_menus():
+    html = render_page(config=DemoConfig())
+
+    assert api_index_payload()["endpoints"]["file_preview_png"] == "/api/files/{file_id}/preview.png"
+    assert "file.links.preview_png" in html
+    assert "isMobileViewport()" in html
+    assert '<img class="pdf-preview-image"' in html
+    assert ".job-row.menu-open { overflow: visible; }" in html
+    assert "@media (max-width: 780px)" in html
+    assert ".file-menu { position: fixed;" in html
 
 
 def test_render_page_centers_empty_states_and_upload_ellipsis():

@@ -19,6 +19,7 @@ from urllib.parse import parse_qs, quote, urlparse
 from uuid import uuid4
 
 import httpx
+import fitz
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -332,6 +333,7 @@ class JobStore:
                 "jobs": f"/api/files/{file.id}/jobs",
                 "parse": f"/api/files/{file.id}/parse",
                 "source_pdf": file_source_pdf_link(file.id, file.filename),
+                "preview_png": f"/api/files/{file.id}/preview.png",
             },
         }
 
@@ -768,6 +770,7 @@ def api_index_payload() -> dict:
             "file_detail": "/api/files/{file_id}",
             "file_jobs": "/api/files/{file_id}/jobs",
             "file_parse": "/api/files/{file_id}/parse",
+            "file_preview_png": "/api/files/{file_id}/preview.png",
             "storage": "/api/storage",
             "jobs": "/api/jobs",
             "job_detail": "/api/jobs/{job_id}",
@@ -797,6 +800,15 @@ def file_source_pdf_link(file_id: str, filename: str) -> str:
     if not Path(display_name).suffix:
         display_name = f"{display_name}.pdf"
     return f"/api/files/{file_id}/source/{quote(display_name, safe='')}"
+
+
+def render_pdf_preview_png(source_path: str | Path, *, page_index: int = 0, dpi: int = 120) -> bytes:
+    with fitz.open(source_path) as document:
+        if document.page_count == 0:
+            raise ValueError("PDF has no pages")
+        page = document.load_page(max(0, min(page_index, document.page_count - 1)))
+        pixmap = page.get_pixmap(dpi=dpi, alpha=False)
+        return pixmap.tobytes("png")
 
 
 class DemoHandler(BaseHTTPRequestHandler):
@@ -1047,6 +1059,15 @@ class DemoHandler(BaseHTTPRequestHandler):
 
         if len(parts) == 4 and parts[3] == "jobs":
             self._send_json({"jobs": [JOB_STORE.to_summary(job) for job in JOB_STORE.list_jobs(file.id)]})
+            return
+
+        if len(parts) == 4 and parts[3] == "preview.png":
+            self._send_file(
+                render_pdf_preview_png(file.source_path),
+                content_type="image/png",
+                filename=f"{Path(file.filename).stem or file.id}.png",
+                inline=True,
+            )
             return
 
         if (len(parts) == 4 and parts[3] == "source.pdf") or (
@@ -1757,6 +1778,7 @@ def render_page(
     }}
     .job-row:hover {{ background: #fff; }}
     .job-row.active {{ background: #eefaf7; border-color: #95d5c8; box-shadow: inset 3px 0 0 var(--accent); }}
+    .job-row.menu-open {{ overflow: visible; }}
     .file-row-main {{
       display: grid;
       min-width: 0;
@@ -2078,6 +2100,13 @@ def render_page(
       border: 0;
       background: #fff;
     }}
+    .pdf-preview-image {{
+      display: block;
+      width: 100%;
+      height: auto;
+      min-height: 0;
+      background: #fff;
+    }}
     .pdf-meta-footer {{
       display: flex;
       justify-content: space-between;
@@ -2210,10 +2239,14 @@ def render_page(
       .storage-meter, .rail-detail {{ display: none; }}
       .jobs header {{ padding: 10px 12px; }}
       .job-list {{ height: auto; max-height: 164px; }}
+      .job-row {{ overflow: visible; }}
+      .file-menu {{ position: fixed; top: auto; right: 18px; z-index: 60; min-width: 136px; }}
       .pdf-stage {{ min-height: 380px; border-right: 0; border-bottom: 1px solid var(--line); }}
       .pdf-canvas {{ padding: 8px; }}
       .pdf-empty {{ width: min(260px, calc(100% - 32px)); padding: 20px; overflow-wrap: anywhere; }}
       .pdf-shell {{ width: 100%; height: min(50vh, 420px); min-height: 340px; }}
+      .pdf-shell.mobile-preview {{ height: min(50vh, 420px); overflow: auto; }}
+      .pdf-preview-image {{ max-width: 100%; }}
       .result-panel {{ min-height: 560px; }}
       .preview-toolbar {{ padding: 14px 12px 10px; }}
       .result-tabs {{ overflow-x: auto; flex-wrap: nowrap; padding: 0 12px; }}
@@ -2585,18 +2618,39 @@ def render_page(
       return `${{file.links.source_pdf}}#view=FitH&zoom=page-width&navpanes=0`;
     }}
 
+    function isMobileViewport() {{
+      return window.matchMedia('(max-width: 780px)').matches;
+    }}
+
+    function positionOpenFileMenu() {{
+      if (!openMenuFileId || !isMobileViewport()) {{
+        return;
+      }}
+      const button = document.querySelector(`[data-file-menu-id="${{CSS.escape(openMenuFileId)}}"]`);
+      const menu = document.querySelector(`[data-file-menu="${{CSS.escape(openMenuFileId)}}"]`);
+      if (!button || !menu || menu.hidden) {{
+        return;
+      }}
+      const rect = button.getBoundingClientRect();
+      const menuHeight = menu.offsetHeight || 80;
+      const top = Math.min(window.innerHeight - menuHeight - 12, rect.bottom + 6);
+      menu.style.top = `${{Math.max(12, top)}}px`;
+    }}
+
     function renderPdfPreview(file) {{
       if (renderedPdfFileId === file.id) {{
         renderPdfPreviewMeta(file);
+        positionOpenFileMenu();
         return;
       }}
       renderedPdfFileId = file.id;
-      pdfCanvas.innerHTML = `
-        <div class="pdf-shell">
-          <iframe class="pdf-frame" src="${{pdfPreviewUrl(file)}}" title="PDF preview"></iframe>
-        </div>
-      `;
+      const source = isMobileViewport() && file.links.preview_png
+        ? `<img class="pdf-preview-image" src="${{file.links.preview_png}}" alt="PDF first page preview">`
+        : `<iframe class="pdf-frame" src="${{pdfPreviewUrl(file)}}" title="PDF preview"></iframe>`;
+      const shellClass = isMobileViewport() ? 'pdf-shell mobile-preview' : 'pdf-shell';
+      pdfCanvas.innerHTML = `<div class="${{shellClass}}">${{source}}</div>`;
       renderPdfPreviewMeta(file);
+      positionOpenFileMenu();
     }}
 
     function pageSeparatedMarkdown() {{
@@ -2694,7 +2748,7 @@ def render_page(
         selectedJobId = files[0].latest_job?.id || null;
       }}
       jobList.innerHTML = files.map((file) => `
-        <div class="job-row ${{file.id === selectedFileId ? 'active' : ''}}" data-file-id="${{escapeHtml(file.id)}}" role="button" tabindex="0">
+        <div class="job-row ${{file.id === selectedFileId ? 'active' : ''}} ${{file.id === openMenuFileId ? 'menu-open' : ''}}" data-file-id="${{escapeHtml(file.id)}}" role="button" tabindex="0">
           <div class="file-row-main">
             <strong class="file-name" title="${{escapeHtml(file.filename)}}">${{escapeHtml(file.filename)}}</strong>
             <span>${{fileMeta(file)}}</span>
@@ -2707,6 +2761,7 @@ def render_page(
           </div>
         </div>
       `).join('');
+      positionOpenFileMenu();
       const selected = files.find((file) => file.id === selectedFileId) || files[0];
       if (selected) {{
         selectedFileId = selected.id;
@@ -2916,6 +2971,11 @@ def render_page(
       sidebarToggle.setAttribute('aria-label', collapsed ? 'Files 사이드바 펼치기' : 'Files 사이드바 접기');
       sidebarToggle.setAttribute('title', collapsed ? 'Files 사이드바 펼치기' : 'Files 사이드바 접기');
       fitWorkspaceContentWidths();
+    }});
+
+    window.addEventListener('resize', () => {{
+      fitWorkspaceContentWidths();
+      positionOpenFileMenu();
     }});
 
     workspaceResizers.forEach((resizer) => {{
