@@ -1210,6 +1210,7 @@ def render_page(
       flex-wrap: nowrap;
       gap: 8px;
       min-width: 0;
+      width: 100%;
       flex: 1 1 auto;
     }}
     .upload-bar .options > * {{
@@ -1223,6 +1224,7 @@ def render_page(
     }}
     .upload-bar .options label.check {{
       display: flex;
+      flex: 0 0 auto;
       min-height: 36px;
       align-items: center;
       gap: 6px;
@@ -1243,8 +1245,9 @@ def render_page(
       white-space: nowrap;
     }}
     .upload-bar .options label:not(.check):has(select) {{
-      flex: 1 1 360px;
-      max-width: 660px;
+      flex: 1 1 0;
+      max-width: 640px;
+      overflow: hidden;
     }}
     .upload-bar .options label:not(.check):has(input[type="text"]) {{
       flex: 0 1 280px;
@@ -1253,6 +1256,7 @@ def render_page(
     .upload-bar input[type="text"] {{
       flex: 1 1 auto;
       width: 100%;
+      max-width: 100%;
       min-width: 0;
       height: 36px;
       border: 1px solid #cbd5e1;
@@ -1262,6 +1266,7 @@ def render_page(
       font: inherit;
       font-size: 13px;
       padding: 4px 10px;
+      text-overflow: ellipsis;
     }}
     .upload-bar button[type="submit"] {{
       min-height: 36px;
@@ -1373,7 +1378,6 @@ def render_page(
       align-items: center;
       margin: 0;
       padding: 12px 14px;
-      border-bottom: 1px solid var(--line);
     }}
     .rail-title {{
       display: inline-flex;
@@ -1973,7 +1977,7 @@ def render_page(
         <header>
           <div class="rail-title">
             <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Files 사이드바 접기" title="Files 사이드바 접기">‹</button>
-            <h2>파일</h2>
+            <h2>Files</h2>
           </div>
           <button id="rail-upload-trigger" class="rail-upload-trigger" type="button" title="파일 업로드" aria-label="파일 업로드" aria-expanded="false">
             <span class="ellipsis" aria-hidden="true">...</span>

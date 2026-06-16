@@ -331,7 +331,8 @@ def test_render_page_uses_document_workspace_layout():
     assert "MD" in html
     assert "미리보기" not in html
     assert "JSON" in html
-    assert "<h2>파일</h2>" in html
+    assert "<h2>Files</h2>" in html
+    assert "<h2>파일</h2>" not in html
     assert "<h2>선택 파일</h2>" in html
     assert "파일을 드래그하여 업로드" not in html
     assert "upload-dropzone" not in html
@@ -380,6 +381,7 @@ def test_render_page_supports_collapsible_and_resizable_workspace():
     assert "--result-width: var(--content-width)" in html
     assert 'id="sidebar-toggle"' in html
     assert 'aria-label="Files 사이드바 접기"' in html
+    assert "border-bottom: 1px solid var(--line);" not in html.split(".jobs header {", 1)[1].split("}", 1)[0]
     assert 'class="workspace-resizer"' in html
     assert 'data-resizer="pdf-result"' in html
     assert "workspace.classList.toggle('rail-collapsed')" in html
@@ -472,8 +474,10 @@ def test_render_page_includes_mobile_friendly_layout_rules():
     assert "min-width: 1120px;" in html
     assert "grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);" in html
     assert "padding: 10px 18px;" in html
-    assert "flex: 1 1 360px;" in html
-    assert "max-width: 660px;" in html
+    assert "width: 100%;" in html
+    assert "flex: 1 1 0;" in html
+    assert "max-width: 640px;" in html
+    assert "text-overflow: ellipsis;" in html
     assert "@media (max-width: 780px)" in html
     assert ".app-shell { min-width: 0; min-height: 100vh; height: auto; overflow: visible; display: block; }" in html
     assert ".topbar {" in html
