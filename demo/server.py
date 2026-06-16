@@ -2454,7 +2454,6 @@ def render_page(
       selectedFile = file;
       selectedTitle.textContent = file.filename;
       downloadLinks.innerHTML = '';
-      tabDownloadLinks.innerHTML = '';
       renderPdfPreview(file);
       const jobsResponse = await fetch(file.links.jobs);
       const jobsData = await jobsResponse.json();
@@ -2465,6 +2464,7 @@ def render_page(
         selectedJobId = null;
         renderedResultKey = null;
         jobIdLabel.textContent = '-';
+        updateTabDownloadLinks(null);
         previewBody.className = 'result-body';
         previewBody.innerHTML = '<div class="empty-state">업로드 완료. 실행을 누르면 이 파일의 새 파싱을 시작합니다.</div>';
         updateDetailPanel(file, null);

@@ -613,7 +613,7 @@ def test_render_page_keeps_download_buttons_stable_during_polling():
     render_job_start = html.index("async function renderJob(job) {")
     render_file_body = html[render_file_start:render_job_start]
 
-    assert "updateTabDownloadLinks(null);" not in render_file_body
+    assert "tabDownloadLinks.innerHTML = '';" not in render_file_body
 
 
 def test_render_page_embeds_valid_javascript(tmp_path: Path):
