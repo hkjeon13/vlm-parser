@@ -368,7 +368,8 @@ def test_render_page_includes_openrouter_model_controls():
     assert 'id="model-input"' not in html
     assert "Model ID" not in html
     assert "Vision Model" in html
-    assert "supports reasoning" in html
+    assert "supports reasoning" not in html
+    assert "Vision Model (vision/model) 🧠" in html
 
 
 def test_render_page_supports_collapsible_and_resizable_workspace():
@@ -504,6 +505,8 @@ def test_render_page_uses_wide_pdf_preview_spacing():
     html = render_page(config=DemoConfig())
 
     assert "padding: 0;" in html
+    assert "padding: 10px 8px;" in html
+    assert "padding: 22px 18px;" not in html
     assert "width: 100%;" in html
 
 

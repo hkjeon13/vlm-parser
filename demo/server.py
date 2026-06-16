@@ -1012,7 +1012,7 @@ def render_page(
             f'<option value="{html.escape(model.id)}"'
             f'{" selected" if model.id == config.model else ""}>'
             f'{html.escape(model.name)} ({html.escape(model.id)})'
-            f'{" · supports reasoning" if model.supports_reasoning else ""}'
+            f'{" 🧠" if model.supports_reasoning else ""}'
             f'</option>'
         )
         for model in openrouter_models
@@ -1630,7 +1630,7 @@ def render_page(
       min-height: 0;
       background: #f3f6fa;
       border-right: 1px solid var(--line);
-      padding: 22px 18px;
+      padding: 10px 8px;
     }}
     .pdf-canvas {{
       width: 100%;
