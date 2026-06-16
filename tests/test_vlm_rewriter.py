@@ -68,8 +68,10 @@ def test_vlm_rewriter_preserves_usage_from_client_response():
 
 
 class FakeHttpClient:
-    def __init__(self):
+    def __init__(self, responses=None):
         self.request = None
+        self.requests = []
+        self.responses = list(responses or [FakeResponse()])
 
     def post(self, url, headers, json, timeout):
         self.request = {
@@ -78,16 +80,20 @@ class FakeHttpClient:
             "json": json,
             "timeout": timeout,
         }
-        return FakeResponse()
+        self.requests.append(self.request)
+        return self.responses.pop(0)
 
 
 class FakeResponse:
+    def __init__(self, content='{"text": "rewritten markdown"}'):
+        self.content = content
+
     def raise_for_status(self):
         return None
 
     def json(self):
         return {
-            "choices": [{"message": {"content": "rewritten markdown"}}],
+            "choices": [{"message": {"content": self.content}}],
             "usage": {
                 "prompt_tokens": 100,
                 "completion_tokens": 20,
@@ -127,7 +133,72 @@ def test_openai_compatible_client_posts_chat_completion_payload(tmp_path):
     assert http_client.request["headers"]["Authorization"] == "Bearer key"
     assert http_client.request["json"]["model"] == "vision-model"
     assert http_client.request["json"]["messages"][0]["content"][1]["type"] == "image_url"
+    assert http_client.request["json"]["response_format"]["type"] == "json_schema"
+    assert http_client.request["json"]["response_format"]["json_schema"]["schema"]["required"] == ["text"]
+    assert "Return only valid JSON" in http_client.request["json"]["messages"][0]["content"][0]["text"]
     assert "reasoning" not in http_client.request["json"]
+
+
+def test_openai_compatible_client_retries_until_json_text_response(tmp_path):
+    image_path = tmp_path / "chunk.png"
+    image_path.write_bytes(b"fake-image")
+    http_client = FakeHttpClient(
+        responses=[
+            FakeResponse("Here is the rewritten document:\n\n# Bad"),
+            FakeResponse('{"text": "# Clean"}'),
+        ]
+    )
+    client = OpenAICompatibleVlmClient(
+        base_url="https://api.example.com/v1",
+        api_key="key",
+        model="vision-model",
+        http_client=http_client,
+    )
+    request = VlmChunkRequest(
+        unit_id="p1",
+        chunk=RenderChunk("c1", 0, str(image_path), [0, 0, 10, 10], [0, 0, 10, 10], "end", 10),
+        static=StaticUnitResult(text="raw text"),
+        previous_markdown="previous",
+        model="vision-model",
+    )
+
+    response = client.rewrite_chunk(request)
+
+    assert response.markdown == "# Clean"
+    assert len(http_client.requests) == 2
+    assert "Previous response was invalid JSON" in http_client.requests[1]["json"]["messages"][0]["content"][0]["text"]
+
+
+def test_openai_compatible_client_rejects_json_without_text(tmp_path):
+    image_path = tmp_path / "chunk.png"
+    image_path.write_bytes(b"fake-image")
+    http_client = FakeHttpClient(
+        responses=[
+            FakeResponse('{"markdown": "# Bad"}'),
+            FakeResponse('{"markdown": "# Still bad"}'),
+            FakeResponse('{"markdown": "# Nope"}'),
+        ]
+    )
+    client = OpenAICompatibleVlmClient(
+        base_url="https://api.example.com/v1",
+        api_key="key",
+        model="vision-model",
+        http_client=http_client,
+    )
+    request = VlmChunkRequest(
+        unit_id="p1",
+        chunk=RenderChunk("c1", 0, str(image_path), [0, 0, 10, 10], [0, 0, 10, 10], "end", 10),
+        static=StaticUnitResult(text="raw text"),
+        previous_markdown="previous",
+        model="vision-model",
+    )
+
+    try:
+        client.rewrite_chunk(request)
+    except ValueError as exc:
+        assert "valid JSON object with a string text field" in str(exc)
+    else:
+        raise AssertionError("Expected invalid JSON response to fail")
 
 
 def test_openai_compatible_client_adds_reasoning_effort_when_configured(tmp_path):
