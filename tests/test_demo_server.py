@@ -381,15 +381,50 @@ def test_render_page_links_upload_button_to_file_input():
     assert 'id="rail-upload-trigger"' in html
     assert 'aria-label="파일 업로드"' in html
     assert 'id="upload-trigger"' not in html
+    assert 'id="job-count"' not in html
+    assert 'aria-hidden="true">...</span>' in html
+    assert '>+</button>' not in html
     assert 'id="pdf-input"' in html
     assert 'name="pdf"' in html
     assert 'name="render_dpi" type="hidden" value="180"' in html
     assert "Render DPI" not in html
     assert 'id="selected-file-name"' not in html
-    assert "fileInput.click()" in html
+    assert 'id="upload-menu"' in html
+    assert 'data-upload-action="select-file"' in html
+    assert "toggleUploadMenu()" in html
     assert "uploadSelectedFile()" in html
     assert "parseSelectedFile()" in html
     assert "fileInput.addEventListener('change', async" in html
+
+
+def test_render_page_centers_empty_states_and_upload_ellipsis():
+    html = render_page(config=DemoConfig())
+
+    assert ".empty-state {" in html
+    assert "text-align: center;" in html
+    assert "place-items: center;" in html
+    assert "letter-spacing: 0;" in html
+    assert 'aria-hidden="true">...</span>' in html
+
+
+def test_render_page_moves_file_status_to_pdf_preview_footer():
+    html = render_page(config=DemoConfig())
+
+    assert 'id="pdf-meta-footer"' in html
+    assert "renderPdfPreviewMeta(file)" in html
+    assert "selectedFileStatusText()" in html
+    assert "상태 / 페이지" not in html
+    assert "업로드 / 모델" not in html
+
+
+def test_render_page_fetches_real_storage_usage():
+    html = render_page(config=DemoConfig())
+
+    assert 'id="storage-meter"' in html
+    assert 'class="storage-summary"' in html
+    assert "fetch('/api/storage')" in html
+    assert "formatBytes(storage.used_bytes)" in html
+    assert "1.24 GB / 10 GB" not in html
 
 
 def test_render_page_places_download_actions_in_tab_bar():
@@ -513,6 +548,7 @@ def test_api_index_payload_lists_job_endpoints():
 
     assert payload["name"] == "vlm-parser demo api"
     assert payload["endpoints"]["files"] == "/api/files"
+    assert payload["endpoints"]["storage"] == "/api/storage"
     assert payload["endpoints"]["file_detail"] == "/api/files/{file_id}"
     assert payload["endpoints"]["file_parse"] == "/api/files/{file_id}/parse"
     assert payload["endpoints"]["jobs"] == "/api/jobs"

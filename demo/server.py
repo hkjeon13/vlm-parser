@@ -104,9 +104,10 @@ class ParseJob:
 
 
 class JobStore:
-    def __init__(self, root_dir: str | Path):
+    def __init__(self, root_dir: str | Path, *, storage_limit_bytes: int = 10 * 1024 * 1024 * 1024):
         self.root_dir = Path(root_dir)
         self.root_dir.mkdir(parents=True, exist_ok=True)
+        self.storage_limit_bytes = storage_limit_bytes
         self._files: dict[str, WorkspaceFile] = {}
         self._jobs: dict[str, ParseJob] = {}
         self._file_jobs: dict[str, list[str]] = {}
@@ -189,6 +190,22 @@ class JobStore:
 
     def list(self) -> list[ParseJob]:
         return self.list_jobs()
+
+    def storage_usage(self) -> dict:
+        used_bytes = 0
+        with self._lock:
+            source_paths = [file.source_path for file in self._files.values()]
+        for source_path in source_paths:
+            try:
+                used_bytes += source_path.stat().st_size
+            except FileNotFoundError:
+                continue
+        percent = int(round((used_bytes / self.storage_limit_bytes) * 100)) if self.storage_limit_bytes else 0
+        return {
+            "used_bytes": used_bytes,
+            "limit_bytes": self.storage_limit_bytes,
+            "percent": max(0, min(100, percent)),
+        }
 
     def delete_file(self, file_id: str) -> bool:
         with self._lock:
@@ -590,6 +607,7 @@ def api_index_payload() -> dict:
             "file_detail": "/api/files/{file_id}",
             "file_jobs": "/api/files/{file_id}/jobs",
             "file_parse": "/api/files/{file_id}/parse",
+            "storage": "/api/storage",
             "jobs": "/api/jobs",
             "job_detail": "/api/jobs/{job_id}",
             "source_pdf": "/api/jobs/{job_id}/source.pdf",
@@ -800,6 +818,9 @@ class DemoHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/files":
             self._send_json({"files": [JOB_STORE.to_file_summary(file) for file in JOB_STORE.list_files()]})
+            return
+        if path == "/api/storage":
+            self._send_json({"storage": JOB_STORE.storage_usage()})
             return
 
         parts = path.strip("/").split("/")
@@ -1321,7 +1342,7 @@ def render_page(
       --rail-width: 44px;
     }}
     .workspace.rail-collapsed .left-rail h2,
-    .workspace.rail-collapsed .left-rail .badge,
+    .workspace.rail-collapsed .left-rail .storage-meter,
     .workspace.rail-collapsed .job-list {{
       display: none;
     }}
@@ -1363,9 +1384,9 @@ def render_page(
       place-items: center;
       width: 28px;
       min-height: 28px;
-      border: 1px solid var(--line);
+      border: 0;
       border-radius: 6px;
-      background: #fff;
+      background: transparent;
       color: var(--muted);
       padding: 0;
       font-size: 16px;
@@ -1406,26 +1427,38 @@ def render_page(
     }}
     .storage-meter {{
       display: grid;
-      gap: 8px;
+      gap: 6px;
       padding: 0 16px 18px;
       color: var(--muted);
       font-size: 12px;
-    }}
-    .storage-meter span {{
-      color: var(--ink);
       font-weight: 750;
     }}
-    .storage-bar {{
+    .storage-summary {{
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      min-width: 0;
+    }}
+    .storage-meter strong {{
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 750;
+    }}
+    .storage-meter span {{
+      min-width: 0;
+    }}
+    .storage-track {{
       height: 7px;
       border-radius: 999px;
       background: #e5e7eb;
       overflow: hidden;
     }}
-    .storage-bar div {{
-      width: 16%;
+    .storage-fill {{
+      width: var(--storage-used, 0%);
       height: 100%;
       border-radius: inherit;
       background: var(--accent);
+      transition: width 0.2s ease;
     }}
     .job-row {{
       position: relative;
@@ -1494,6 +1527,51 @@ def render_page(
     }}
     .file-menu button:hover {{ background: #f1f5f9; }}
     .file-menu button.danger {{ color: var(--error); }}
+    .rail-upload-trigger {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      min-height: 32px;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      padding: 0;
+      font-size: 20px;
+      line-height: 0;
+    }}
+    .rail-upload-trigger:hover {{ background: #e2e8f0; color: var(--ink); }}
+    .rail-upload-trigger .ellipsis {{
+      display: block;
+      height: 12px;
+      line-height: 6px;
+      letter-spacing: 0;
+      transform: translateY(-1px);
+    }}
+    .upload-menu {{
+      position: absolute;
+      top: 42px;
+      right: 8px;
+      z-index: 10;
+      display: grid;
+      min-width: 130px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 10px 26px rgba(15,23,42,0.16);
+      padding: 6px;
+    }}
+    .upload-menu[hidden] {{ display: none; }}
+    .upload-menu button {{
+      min-height: 32px;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--ink);
+      padding: 6px 9px;
+      text-align: left;
+      font-size: 13px;
+    }}
+    .upload-menu button:hover {{ background: #f1f5f9; }}
     .job-row span {{ color: var(--muted); font-size: 13px; }}
     .badge {{
       display: inline-flex;
@@ -1540,6 +1618,8 @@ def render_page(
       gap: 10px;
     }}
     .pdf-stage {{
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) auto;
       min-width: 0;
       min-height: 0;
       background: #f3f6fa;
@@ -1711,12 +1791,29 @@ def render_page(
       border: 0;
       background: #fff;
     }}
+    .pdf-meta-footer {{
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 38px;
+      padding: 9px 14px;
+      border: 1px solid var(--line);
+      border-top: 0;
+      border-radius: 0 0 8px 8px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+    }}
     .empty-state {{
+      display: grid;
+      place-items: center;
       border: 1px dashed var(--line);
       border-radius: 8px;
       background: #fbfbfa;
       color: var(--muted);
       padding: 24px;
+      text-align: center;
     }}
     .results {{
       display: grid;
@@ -1806,8 +1903,8 @@ def render_page(
       .upload-bar button[type="submit"] {{ flex: 0 0 auto; }}
       .workspace {{ display: flex; flex-direction: column; height: auto; }}
       .workspace.rail-collapsed .job-list {{ display: grid; }}
-      .workspace.rail-collapsed .left-rail h2,
-      .workspace.rail-collapsed .left-rail .badge {{ display: inline-flex; }}
+      .workspace.rail-collapsed .left-rail h2 {{ display: inline-flex; }}
+      .workspace.rail-collapsed .left-rail .storage-meter {{ display: grid; }}
       .workspace-resizer {{ display: none; }}
       .left-rail {{ max-height: 220px; border-width: 0 0 1px 0; }}
       .storage-meter, .rail-detail {{ display: none; }}
@@ -1876,7 +1973,12 @@ def render_page(
             <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Files 사이드바 접기" title="Files 사이드바 접기">‹</button>
             <h2>파일</h2>
           </div>
-          <button id="rail-upload-trigger" class="file-menu-button" type="button" title="파일 업로드" aria-label="파일 업로드">⋯</button>
+          <button id="rail-upload-trigger" class="rail-upload-trigger" type="button" title="파일 업로드" aria-label="파일 업로드" aria-expanded="false">
+            <span class="ellipsis" aria-hidden="true">...</span>
+          </button>
+          <div id="upload-menu" class="upload-menu" hidden>
+            <button type="button" data-upload-action="select-file">파일 업로드</button>
+          </div>
         </header>
         <input class="rail-search" type="search" placeholder="파일명 검색" aria-label="파일명 검색">
         <div id="job-list" class="job-list">
@@ -1889,25 +1991,25 @@ def render_page(
               <span>파일명</span>
               <strong id="detail-filename">선택된 파일 없음</strong>
             </div>
-            <div class="detail-row">
-              <span>상태 / 페이지</span>
-              <strong><span id="detail-status">-</span> · <span id="detail-pages">-</span></strong>
-            </div>
-            <div class="detail-row">
-              <span>업로드 / 모델</span>
-              <strong><span id="detail-created">-</span> · <span id="detail-model">-</span></strong>
-            </div>
           </div>
         </section>
-        <div class="storage-meter">
-          <span>저장소 사용량</span>
-          <div>1.24 GB / 10 GB</div>
-          <div class="storage-bar" aria-hidden="true"><div></div></div>
+        <div id="storage-meter" class="storage-meter" aria-live="polite">
+          <div class="storage-summary">
+            <strong>저장소 사용량</strong>
+            <span id="storage-label">계산 중...</span>
+          </div>
+          <div class="storage-track" aria-hidden="true">
+            <div id="storage-fill" class="storage-fill"></div>
+          </div>
         </div>
       </aside>
       <section class="pdf-stage">
         <div id="pdf-canvas" class="pdf-canvas">
           <div class="pdf-empty">PDF를 업로드하면 이 영역에서 원문을 확인할 수 있습니다.</div>
+        </div>
+        <div id="pdf-meta-footer" class="pdf-meta-footer">
+          <span id="pdf-status-label">상태: -</span>
+          <span id="pdf-page-label">페이지: -</span>
         </div>
       </section>
       <div class="workspace-resizer" data-resizer="pdf-result" role="separator" aria-label="PDF와 결과 패널 너비 조정" aria-orientation="vertical" tabindex="0"></div>
@@ -1936,22 +2038,22 @@ def render_page(
     const modelField = document.getElementById('model-field');
     const fileInput = document.getElementById('pdf-input');
     const railUploadTrigger = document.getElementById('rail-upload-trigger');
+    const uploadMenu = document.getElementById('upload-menu');
     const workspace = document.querySelector('.workspace');
     const sidebarToggle = document.getElementById('sidebar-toggle');
     const workspaceResizers = Array.from(document.querySelectorAll('[data-resizer]'));
     const jobList = document.getElementById('job-list');
-    const jobCount = document.getElementById('job-count');
     const selectedTitle = document.getElementById('selected-title');
     const downloadLinks = document.getElementById('download-links');
     const tabDownloadLinks = document.getElementById('tab-download-links');
     const previewBody = document.getElementById('preview-body');
     const pdfCanvas = document.getElementById('pdf-canvas');
+    const pdfStatusLabel = document.getElementById('pdf-status-label');
+    const pdfPageLabel = document.getElementById('pdf-page-label');
+    const storageLabel = document.getElementById('storage-label');
+    const storageFill = document.getElementById('storage-fill');
     const jobIdLabel = document.getElementById('job-id-label');
     const detailFilename = document.getElementById('detail-filename');
-    const detailStatus = document.getElementById('detail-status');
-    const detailPages = document.getElementById('detail-pages');
-    const detailCreated = document.getElementById('detail-created');
-    const detailModel = document.getElementById('detail-model');
     const tabButtons = Array.from(document.querySelectorAll('[data-tab]'));
     let selectedFileId = null;
     let selectedJobId = null;
@@ -1962,6 +2064,7 @@ def render_page(
     let renderedPdfFileId = null;
     let renderedResultKey = null;
     let openMenuFileId = null;
+    let uploadMenuOpen = false;
     let activeResize = null;
     let activeTab = 'html';
 
@@ -2059,6 +2162,59 @@ def render_page(
       `;
     }}
 
+    function formatBytes(bytes) {{
+      const value = Number(bytes || 0);
+      if (value < 1024) {{
+        return `${{value}} B`;
+      }}
+      const units = ['KB', 'MB', 'GB', 'TB'];
+      let size = value / 1024;
+      let unitIndex = 0;
+      while (size >= 1024 && unitIndex < units.length - 1) {{
+        size /= 1024;
+        unitIndex += 1;
+      }}
+      return `${{size.toFixed(size >= 10 ? 1 : 2)}} ${{units[unitIndex]}}`;
+    }}
+
+    function toggleUploadMenu(forceOpen) {{
+      uploadMenuOpen = typeof forceOpen === 'boolean' ? forceOpen : !uploadMenuOpen;
+      uploadMenu.hidden = !uploadMenuOpen;
+      railUploadTrigger.setAttribute('aria-expanded', uploadMenuOpen ? 'true' : 'false');
+    }}
+
+    function selectedFileStatusText() {{
+      if (!selectedFile) {{
+        return '상태: -';
+      }}
+      const job = selectedJob || selectedFile.latest_job;
+      if (!job) {{
+        return '상태: uploaded';
+      }}
+      return `상태: ${{job.status}}`;
+    }}
+
+    function renderPdfPreviewMeta(file) {{
+      const job = selectedJob || file?.latest_job;
+      const pages = selectedJson?.pages?.length || job?.progress?.total || 0;
+      pdfStatusLabel.textContent = selectedFileStatusText();
+      pdfPageLabel.textContent = pages ? `페이지: ${{pages}}` : '페이지: -';
+    }}
+
+    async function refreshStorageUsage() {{
+      try {{
+        const response = await fetch('/api/storage');
+        const data = await response.json();
+        const storage = data.storage || data;
+        const percent = Math.max(0, Math.min(100, Number(storage.percent || 0)));
+        storageLabel.textContent = `${{formatBytes(storage.used_bytes)}} / ${{formatBytes(storage.limit_bytes)}}`;
+        storageFill.style.setProperty('--storage-used', `${{percent}}%`);
+      }} catch (error) {{
+        storageLabel.textContent = '저장소 사용량을 불러오지 못했습니다.';
+        storageFill.style.setProperty('--storage-used', '0%');
+      }}
+    }}
+
     function fileMeta(file) {{
       const job = file.latest_job;
       if (!job) {{
@@ -2072,12 +2228,8 @@ def render_page(
       if (!detailFilename) {{
         return;
       }}
-      const pages = selectedJson?.pages?.length || job?.progress?.total || '-';
       detailFilename.textContent = file?.filename || '선택된 파일 없음';
-      detailStatus.textContent = job?.status || (file ? 'uploaded' : '-');
-      detailPages.textContent = pages;
-      detailCreated.textContent = formatDateTime(file?.created_at);
-      detailModel.textContent = job?.model || '-';
+      renderPdfPreviewMeta(file);
     }}
 
     function pdfPreviewUrl(file) {{
@@ -2086,6 +2238,7 @@ def render_page(
 
     function renderPdfPreview(file) {{
       if (renderedPdfFileId === file.id) {{
+        renderPdfPreviewMeta(file);
         return;
       }}
       renderedPdfFileId = file.id;
@@ -2094,6 +2247,7 @@ def render_page(
           <iframe class="pdf-frame" src="${{pdfPreviewUrl(file)}}" title="PDF preview"></iframe>
         </div>
       `;
+      renderPdfPreviewMeta(file);
     }}
 
     function pageSeparatedMarkdown() {{
@@ -2158,17 +2312,18 @@ def render_page(
       const response = await fetch('/api/files');
       const data = await response.json();
       const files = data.files || [];
-      if (jobCount) {{
-        jobCount.textContent = String(files.length);
-      }}
+      await refreshStorageUsage();
       if (!files.length) {{
         selectedFileId = null;
         selectedJobId = null;
         selectedFile = null;
         selectedJob = null;
+        selectedJson = null;
         jobList.innerHTML = '<div class="empty-state">No files yet.</div>';
         selectedTitle.textContent = 'Select a file';
         jobIdLabel.textContent = '-';
+        pdfCanvas.innerHTML = '<div class="pdf-empty">PDF를 업로드하면 이 영역에서 원문을 확인할 수 있습니다.</div>';
+        renderedPdfFileId = null;
         updateDetailPanel(null, null);
         return;
       }}
@@ -2286,11 +2441,12 @@ def render_page(
       if (!fileInput.files.length) {{
         previewBody.className = 'result-body';
         previewBody.innerHTML = '<div class="error">PDF 파일을 먼저 선택해 주세요.</div>';
+        toggleUploadMenu(false);
         fileInput.click();
         return;
       }}
-      uploadTrigger.disabled = true;
-      uploadTrigger.textContent = '업로드 중...';
+      railUploadTrigger.disabled = true;
+      railUploadTrigger.setAttribute('aria-label', '업로드 중');
       try {{
         syncModelField();
         const response = await fetch('/api/files', {{
@@ -2313,8 +2469,8 @@ def render_page(
         previewBody.className = 'result-body';
         previewBody.innerHTML = `<div class="error">${{escapeHtml(error.message)}}</div>`;
       }} finally {{
-        uploadTrigger.disabled = false;
-        uploadTrigger.textContent = '업로드';
+        railUploadTrigger.disabled = false;
+        railUploadTrigger.setAttribute('aria-label', '파일 업로드');
       }}
     }}
 
@@ -2437,7 +2593,18 @@ def render_page(
     }});
 
     railUploadTrigger.addEventListener('click', () => {{
-      fileInput.click();
+      toggleUploadMenu();
+    }});
+
+    uploadMenu.addEventListener('click', (event) => {{
+      const action = event.target.closest('[data-upload-action]');
+      if (!action) {{
+        return;
+      }}
+      if (action.dataset.uploadAction === 'select-file') {{
+        toggleUploadMenu(false);
+        fileInput.click();
+      }}
     }});
 
     modelSelect?.addEventListener('change', syncModelField);
@@ -2447,6 +2614,13 @@ def render_page(
       if (fileInput.files.length) {{
         await uploadSelectedFile();
       }}
+    }});
+
+    document.addEventListener('click', (event) => {{
+      if (railUploadTrigger.contains(event.target) || uploadMenu.contains(event.target)) {{
+        return;
+      }}
+      toggleUploadMenu(false);
     }});
 
     jobList.addEventListener('click', async (event) => {{
