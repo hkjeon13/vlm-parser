@@ -20,3 +20,4 @@ class VlmOptions:
     max_concurrency: int = 4
     timeout_seconds: float = 60.0
     max_retries: int = 2
+    reasoning_effort: str = "auto"

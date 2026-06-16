@@ -13,6 +13,7 @@ from demo.server import (
     build_vlm_client,
     calculate_openrouter_cost,
     content_disposition_header,
+    effective_openrouter_reasoning_effort,
     fetch_openrouter_models,
     is_openrouter_base_url,
     source_pdf_link,
@@ -163,6 +164,28 @@ def test_calculate_openrouter_cost_uses_usage_and_pricing():
     assert metrics["total_cost_usd"] == 4.15
 
 
+def test_effective_openrouter_reasoning_effort_requires_supported_model(monkeypatch):
+    config = DemoConfig(api_key="key", model="vision/model", base_url="https://openrouter.ai/api/v1")
+
+    monkeypatch.setattr(
+        "demo.server.safe_fetch_openrouter_models",
+        lambda _config: [OpenRouterModel(id="vision/model", name="Vision Model", supports_reasoning=True)],
+    )
+
+    assert effective_openrouter_reasoning_effort(config, "high") == "high"
+
+
+def test_effective_openrouter_reasoning_effort_ignores_unsupported_model(monkeypatch):
+    config = DemoConfig(api_key="key", model="vision/model", base_url="https://openrouter.ai/api/v1")
+
+    monkeypatch.setattr(
+        "demo.server.safe_fetch_openrouter_models",
+        lambda _config: [OpenRouterModel(id="vision/model", name="Vision Model", supports_reasoning=False)],
+    )
+
+    assert effective_openrouter_reasoning_effort(config, "high") == "auto"
+
+
 def test_build_vlm_client_returns_none_when_config_is_incomplete():
     config = DemoConfig(api_key="", model="qwen/qwen3.7-plus", base_url="")
 
@@ -276,7 +299,15 @@ def test_process_job_stores_json_and_markdown_results(tmp_path: Path):
     file = store.create_file(UploadedFile(filename="sample.pdf", content=b"%PDF-1.7"))
     job = store.create_job(
         file.id,
-        JobOptions(use_vlm=False, render_dpi=180, trim=True, auto_slice=True, max_page_workers=3, model=""),
+        JobOptions(
+            use_vlm=False,
+            render_dpi=180,
+            trim=True,
+            auto_slice=True,
+            max_page_workers=3,
+            reasoning_effort="high",
+            model="",
+        ),
     )
 
     class FakeResult:
@@ -295,12 +326,23 @@ def test_process_job_stores_json_and_markdown_results(tmp_path: Path):
             self.progress_callback(1, 2, "Parsed page 1 of 2")
             return FakeResult()
 
-    def parser_factory(*, use_vlm, render_dpi, trim, auto_slice, max_page_workers, config, progress_callback=None):
+    def parser_factory(
+        *,
+        use_vlm,
+        render_dpi,
+        trim,
+        auto_slice,
+        max_page_workers,
+        reasoning_effort,
+        config,
+        progress_callback=None,
+    ):
         assert use_vlm is False
         assert render_dpi == 180
         assert trim is True
         assert auto_slice is True
         assert max_page_workers == 3
+        assert reasoning_effort == "high"
         assert config.model == ""
         assert progress_callback is not None
         return FakeParser(progress_callback)
@@ -408,6 +450,12 @@ def test_render_page_links_upload_button_to_file_input():
     assert 'name="pdf"' in html
     assert 'name="render_dpi" type="hidden" value="180"' in html
     assert 'name="max_page_workers" type="number" min="1" max="16" value="4"' in html
+    assert 'name="reasoning_effort"' in html
+    assert '<option value="auto" selected>Think auto</option>' in html
+    assert '<option value="off">Think off</option>' in html
+    assert '<option value="low">Think low</option>' in html
+    assert '<option value="medium">Think medium</option>' in html
+    assert '<option value="high">Think high</option>' in html
     assert "Render DPI" not in html
     assert 'id="selected-file-name"' not in html
     assert "selectedFileName" not in html
@@ -553,6 +601,11 @@ def test_render_page_keeps_download_buttons_stable_during_polling():
     stable_check = html.index("if (renderedResultKey === resultRenderKey(job)) {")
 
     assert download_update < stable_check
+    render_file_start = html.index("async function renderFile(file) {")
+    render_job_start = html.index("async function renderJob(job) {")
+    render_file_body = html[render_file_start:render_job_start]
+
+    assert "updateTabDownloadLinks(null);" not in render_file_body
 
 
 def test_render_page_embeds_valid_javascript(tmp_path: Path):

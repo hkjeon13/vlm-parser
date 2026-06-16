@@ -73,6 +73,7 @@ class JobOptions:
     trim: bool
     auto_slice: bool
     max_page_workers: int = 4
+    reasoning_effort: str = "auto"
     model: str = ""
 
 
@@ -337,6 +338,7 @@ class JobStore:
             "trim": job.options.trim,
             "auto_slice": job.options.auto_slice,
             "max_page_workers": job.options.max_page_workers,
+            "reasoning_effort": job.options.reasoning_effort,
             "metrics": {
                 "total_seconds": metrics.get("total_seconds"),
                 "average_seconds_per_page": metrics.get("average_seconds_per_page"),
@@ -467,6 +469,18 @@ def find_openrouter_model(models: list[OpenRouterModel], model_id: str) -> OpenR
     return None
 
 
+def effective_openrouter_reasoning_effort(config: DemoConfig, requested: str) -> str:
+    requested = _reasoning_effort_field(requested)
+    if requested == "auto":
+        return "auto"
+    if not is_openrouter_base_url(config.base_url) or not config.model:
+        return "auto"
+    model = find_openrouter_model(safe_fetch_openrouter_models(config), config.model)
+    if model is None or not model.supports_reasoning:
+        return "auto"
+    return requested
+
+
 def calculate_openrouter_cost(result_json: dict, model: OpenRouterModel) -> dict:
     prompt_tokens = 0
     completion_tokens = 0
@@ -516,7 +530,7 @@ def add_openrouter_cost_metrics(result_json: dict, config: DemoConfig) -> None:
     metrics["openrouter"] = cost
 
 
-def build_vlm_client(config: DemoConfig) -> OpenAICompatibleVlmClient | None:
+def build_vlm_client(config: DemoConfig, *, reasoning_effort: str = "auto") -> OpenAICompatibleVlmClient | None:
     if not config.api_key or not config.model or not config.base_url:
         return None
     return OpenAICompatibleVlmClient(
@@ -524,6 +538,7 @@ def build_vlm_client(config: DemoConfig) -> OpenAICompatibleVlmClient | None:
         api_key=config.api_key,
         model=config.model,
         timeout_seconds=120,
+        reasoning_effort=reasoning_effort,
     )
 
 
@@ -534,10 +549,12 @@ def make_parser(
     trim: bool,
     auto_slice: bool,
     max_page_workers: int,
+    reasoning_effort: str,
     config: DemoConfig,
     progress_callback=None,
 ) -> PdfParser:
-    vlm_client = build_vlm_client(config) if use_vlm else None
+    effective_reasoning_effort = effective_openrouter_reasoning_effort(config, reasoning_effort)
+    vlm_client = build_vlm_client(config, reasoning_effort=effective_reasoning_effort) if use_vlm else None
     return PdfParser(
         options=ParseOptions(
             render_dpi=render_dpi,
@@ -551,6 +568,7 @@ def make_parser(
             base_url=normalize_model_base_url(config.base_url) if config.base_url else None,
             api_key=config.api_key or None,
             timeout_seconds=120,
+            reasoning_effort=effective_reasoning_effort,
         ),
         vlm_client=vlm_client,
         progress_callback=progress_callback,
@@ -582,6 +600,7 @@ def process_job(
             trim=job.options.trim,
             auto_slice=job.options.auto_slice,
             max_page_workers=job.options.max_page_workers,
+            reasoning_effort=job.options.reasoning_effort,
             config=effective_config,
             progress_callback=report_progress,
         )
@@ -983,6 +1002,10 @@ def _bounded_int_field(value: str, *, default: int, minimum: int, maximum: int) 
     return min(maximum, max(minimum, _int_field(value, default=default)))
 
 
+def _reasoning_effort_field(value: str) -> str:
+    return value if value in {"auto", "off", "low", "medium", "high"} else "auto"
+
+
 def _job_options_from_fields(fields: dict[str, str]) -> JobOptions:
     return JobOptions(
         use_vlm=fields.get("use_vlm", "off") == "on",
@@ -990,6 +1013,7 @@ def _job_options_from_fields(fields: dict[str, str]) -> JobOptions:
         trim=fields.get("trim", "off") == "on",
         auto_slice=fields.get("auto_slice", "off") == "on",
         max_page_workers=_bounded_int_field(fields.get("max_page_workers", "4"), default=4, minimum=1, maximum=16),
+        reasoning_effort=_reasoning_effort_field(fields.get("reasoning_effort", "auto")),
         model=fields.get("model", "").strip(),
     )
 
@@ -1986,6 +2010,15 @@ def render_page(
           {model_select}
           {model_manual}
           {model_field}
+          <label>Think
+            <select name="reasoning_effort">
+              <option value="auto" selected>Think auto</option>
+              <option value="off">Think off</option>
+              <option value="low">Think low</option>
+              <option value="medium">Think medium</option>
+              <option value="high">Think high</option>
+            </select>
+          </label>
           <label>Page workers <input name="max_page_workers" type="number" min="1" max="16" value="4"></label>
           <label class="check"><input name="use_vlm" type="checkbox"> Use VLM</label>
           <button type="submit">실행</button>
@@ -2411,7 +2444,6 @@ def render_page(
       selectedTitle.textContent = file.filename;
       downloadLinks.innerHTML = '';
       tabDownloadLinks.innerHTML = '';
-      updateTabDownloadLinks(null);
       renderPdfPreview(file);
       const jobsResponse = await fetch(file.links.jobs);
       const jobsData = await jobsResponse.json();

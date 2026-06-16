@@ -127,3 +127,52 @@ def test_openai_compatible_client_posts_chat_completion_payload(tmp_path):
     assert http_client.request["headers"]["Authorization"] == "Bearer key"
     assert http_client.request["json"]["model"] == "vision-model"
     assert http_client.request["json"]["messages"][0]["content"][1]["type"] == "image_url"
+    assert "reasoning" not in http_client.request["json"]
+
+
+def test_openai_compatible_client_adds_reasoning_effort_when_configured(tmp_path):
+    image_path = tmp_path / "chunk.png"
+    image_path.write_bytes(b"fake-image")
+    http_client = FakeHttpClient()
+    client = OpenAICompatibleVlmClient(
+        base_url="https://api.example.com/v1",
+        api_key="key",
+        model="vision-model",
+        http_client=http_client,
+        reasoning_effort="low",
+    )
+    request = VlmChunkRequest(
+        unit_id="p1",
+        chunk=RenderChunk("c1", 0, str(image_path), [0, 0, 10, 10], [0, 0, 10, 10], "end", 10),
+        static=StaticUnitResult(text="raw text"),
+        previous_markdown="previous",
+        model="vision-model",
+    )
+
+    client.rewrite_chunk(request)
+
+    assert http_client.request["json"]["reasoning"] == {"effort": "low"}
+
+
+def test_openai_compatible_client_maps_reasoning_off_to_none(tmp_path):
+    image_path = tmp_path / "chunk.png"
+    image_path.write_bytes(b"fake-image")
+    http_client = FakeHttpClient()
+    client = OpenAICompatibleVlmClient(
+        base_url="https://api.example.com/v1",
+        api_key="key",
+        model="vision-model",
+        http_client=http_client,
+        reasoning_effort="off",
+    )
+    request = VlmChunkRequest(
+        unit_id="p1",
+        chunk=RenderChunk("c1", 0, str(image_path), [0, 0, 10, 10], [0, 0, 10, 10], "end", 10),
+        static=StaticUnitResult(text="raw text"),
+        previous_markdown="previous",
+        model="vision-model",
+    )
+
+    client.rewrite_chunk(request)
+
+    assert http_client.request["json"]["reasoning"] == {"effort": "none"}

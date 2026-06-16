@@ -22,6 +22,7 @@ class OpenAICompatibleVlmClient:
     model: str
     http_client: object | None = None
     timeout_seconds: float = 60.0
+    reasoning_effort: str = "auto"
 
     def rewrite_chunk(self, request: object) -> VlmClientResponse:
         client = self.http_client or httpx.Client()
@@ -59,7 +60,7 @@ class OpenAICompatibleVlmClient:
             f"Previous Markdown:\n{request.previous_markdown}\n\n"
             f"Static text:\n{request.static.text}"
         )
-        return {
+        payload = {
             "model": request.model or self.model,
             "messages": [
                 {
@@ -76,6 +77,20 @@ class OpenAICompatibleVlmClient:
                 }
             ],
         }
+        reasoning = _reasoning_payload(self.reasoning_effort)
+        if reasoning is not None:
+            payload["reasoning"] = reasoning
+        return payload
+
+
+def _reasoning_payload(reasoning_effort: str) -> dict[str, str] | None:
+    if reasoning_effort == "auto":
+        return None
+    if reasoning_effort == "off":
+        return {"effort": "none"}
+    if reasoning_effort in {"low", "medium", "high"}:
+        return {"effort": reasoning_effort}
+    return None
 
 
 def _reasoning_tokens_from_usage(usage: dict) -> int:
