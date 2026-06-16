@@ -294,6 +294,45 @@ def test_job_store_reports_real_storage_usage(tmp_path: Path):
     }
 
 
+def test_job_store_restores_files_and_completed_jobs_from_disk(tmp_path: Path):
+    store = JobStore(tmp_path)
+    file = store.create_file(UploadedFile(filename="sample.pdf", content=b"%PDF-1.7"))
+    job = store.create_job(
+        file.id,
+        JobOptions(
+            use_vlm=True,
+            render_dpi=220,
+            trim=True,
+            auto_slice=True,
+            max_page_workers=6,
+            reasoning_effort="low",
+            model="vision/model",
+        ),
+    )
+    assert job is not None
+    store.update_progress(job.id, current=3, total=3, label="Complete")
+    store.mark_done(job.id, {"document": {"markdown": "# Parsed"}}, "# Parsed")
+
+    restored = JobStore(tmp_path)
+
+    restored_files = restored.list_files()
+    assert [restored_file.id for restored_file in restored_files] == [file.id]
+    restored_file = restored_files[0]
+    assert restored_file.filename == "sample.pdf"
+    assert restored_file.source_path.read_bytes() == b"%PDF-1.7"
+
+    restored_jobs = restored.list_jobs(file.id)
+    assert [restored_job.id for restored_job in restored_jobs] == [job.id]
+    restored_job = restored_jobs[0]
+    assert restored_job.status == "done"
+    assert restored_job.markdown == "# Parsed"
+    assert restored_job.result_json == {"document": {"markdown": "# Parsed"}}
+    assert restored_job.options.use_vlm is True
+    assert restored_job.options.max_page_workers == 6
+    assert restored_job.options.reasoning_effort == "low"
+    assert restored.to_file_summary(restored_file)["latest_job"]["id"] == job.id
+
+
 def test_process_job_stores_json_and_markdown_results(tmp_path: Path):
     store = JobStore(tmp_path)
     file = store.create_file(UploadedFile(filename="sample.pdf", content=b"%PDF-1.7"))

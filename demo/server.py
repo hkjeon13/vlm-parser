@@ -6,7 +6,6 @@ import json
 import os
 import shutil
 import sys
-import tempfile
 import threading
 import time
 import traceback
@@ -32,6 +31,7 @@ from vlm_parser.vlm.client import OpenAICompatibleVlmClient  # noqa: E402
 
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+DEMO_STORAGE_DIR_ENV = "VLM_PARSER_DEMO_STORAGE_DIR"
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,11 +109,13 @@ class JobStore:
     def __init__(self, root_dir: str | Path, *, storage_limit_bytes: int = 10 * 1024 * 1024 * 1024):
         self.root_dir = Path(root_dir)
         self.root_dir.mkdir(parents=True, exist_ok=True)
+        self.manifest_path = self.root_dir / "manifest.json"
         self.storage_limit_bytes = storage_limit_bytes
         self._files: dict[str, WorkspaceFile] = {}
         self._jobs: dict[str, ParseJob] = {}
         self._file_jobs: dict[str, list[str]] = {}
         self._lock = threading.Lock()
+        self._load_manifest()
 
     def create_file(self, uploaded: UploadedFile) -> WorkspaceFile:
         file_id = uuid4().hex
@@ -132,6 +134,7 @@ class JobStore:
         with self._lock:
             self._files[file_id] = file
             self._file_jobs[file_id] = []
+            self._persist_manifest_locked()
         return file
 
     def create_job(self, file_id: str, options: JobOptions) -> ParseJob | None:
@@ -153,6 +156,7 @@ class JobStore:
             self._jobs[job_id] = job
             self._file_jobs.setdefault(file_id, []).append(job_id)
             file.updated_at = now
+            self._persist_manifest_locked()
             return job
 
     def create(self, uploaded: UploadedFile, options: JobOptions) -> ParseJob:
@@ -216,6 +220,7 @@ class JobStore:
                 return False
             for job_id in self._file_jobs.pop(file_id, []):
                 self._jobs.pop(job_id, None)
+            self._persist_manifest_locked()
         shutil.rmtree(self.root_dir / file_id, ignore_errors=True)
         return True
 
@@ -228,6 +233,7 @@ class JobStore:
             if not job.progress_label:
                 job.progress_label = "Starting parse"
             self._touch(job)
+            self._persist_manifest_locked()
             return job
 
     def mark_queued(self, job_id: str) -> ParseJob | None:
@@ -242,6 +248,7 @@ class JobStore:
             job.progress_percent = 0
             job.progress_label = "Queued"
             self._touch(job)
+            self._persist_manifest_locked()
             return job
 
     def update_progress(self, job_id: str, *, current: int, total: int, label: str) -> ParseJob | None:
@@ -256,6 +263,7 @@ class JobStore:
             job.progress_percent = int(round((safe_current / safe_total) * 100)) if safe_total else 0
             job.progress_label = label
             self._touch(job)
+            self._persist_manifest_locked()
             return job
 
     def mark_done(self, job_id: str, result_json: dict, markdown: str) -> ParseJob | None:
@@ -271,6 +279,7 @@ class JobStore:
             job.progress_percent = 100
             job.progress_label = "Complete"
             self._touch(job)
+            self._persist_manifest_locked()
             return job
 
     def mark_failed(self, job_id: str, error: str) -> ParseJob | None:
@@ -282,6 +291,7 @@ class JobStore:
             job.error = error
             job.progress_label = "Failed"
             self._touch(job)
+            self._persist_manifest_locked()
             return job
 
     def _set_status(self, job_id: str, status: str, *, clear_error: bool = False) -> ParseJob | None:
@@ -293,6 +303,7 @@ class JobStore:
             if clear_error:
                 job.error = ""
             self._touch(job)
+            self._persist_manifest_locked()
             return job
 
     def _touch(self, job: ParseJob) -> None:
@@ -364,8 +375,134 @@ class JobStore:
             },
         }
 
+    def _load_manifest(self) -> None:
+        try:
+            payload = json.loads(self.manifest_path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError):
+            return
 
-JOB_STORE = JobStore(Path(tempfile.gettempdir()) / "vlm-parser-demo-jobs")
+        files: dict[str, WorkspaceFile] = {}
+        for item in payload.get("files", []):
+            file_id = str(item.get("id") or "")
+            filename = str(item.get("filename") or "uploaded.pdf")
+            source_path = self.root_dir / file_id / "source.pdf"
+            if not file_id or not source_path.exists():
+                continue
+            files[file_id] = WorkspaceFile(
+                id=file_id,
+                filename=filename,
+                source_path=source_path,
+                created_at=float(item.get("created_at") or 0),
+                updated_at=float(item.get("updated_at") or 0),
+            )
+
+        jobs: dict[str, ParseJob] = {}
+        file_jobs: dict[str, list[str]] = {file_id: [] for file_id in files}
+        for item in payload.get("jobs", []):
+            job_id = str(item.get("id") or "")
+            file_id = str(item.get("file_id") or "")
+            file = files.get(file_id)
+            if not job_id or file is None:
+                continue
+            status = str(item.get("status") or "uploaded")
+            error = str(item.get("error") or "")
+            progress_label = str(item.get("progress_label") or "")
+            if status in {"queued", "running"}:
+                status = "failed"
+                error = error or "Server restarted before this job completed."
+                progress_label = "Interrupted"
+            job = ParseJob(
+                id=job_id,
+                file_id=file_id,
+                filename=str(item.get("filename") or file.filename),
+                source_path=file.source_path,
+                options=self._job_options_from_manifest(item.get("options") or {}),
+                status=status,
+                created_at=float(item.get("created_at") or 0),
+                updated_at=float(item.get("updated_at") or 0),
+                error=error,
+                result_json=item.get("result_json"),
+                markdown=str(item.get("markdown") or ""),
+                progress_current=int(item.get("progress_current") or 0),
+                progress_total=int(item.get("progress_total") or 0),
+                progress_percent=int(item.get("progress_percent") or 0),
+                progress_label=progress_label,
+            )
+            jobs[job_id] = job
+            file_jobs.setdefault(file_id, []).append(job_id)
+
+        self._files = files
+        self._jobs = jobs
+        self._file_jobs = file_jobs
+        if any(job.status == "failed" and job.progress_label == "Interrupted" for job in jobs.values()):
+            self._persist_manifest_locked()
+
+    @staticmethod
+    def _job_options_from_manifest(payload: dict) -> JobOptions:
+        reasoning_effort = str(payload.get("reasoning_effort") or "auto")
+        return JobOptions(
+            use_vlm=bool(payload.get("use_vlm", False)),
+            render_dpi=int(payload.get("render_dpi") or 180),
+            trim=bool(payload.get("trim", True)),
+            auto_slice=bool(payload.get("auto_slice", True)),
+            max_page_workers=int(payload.get("max_page_workers") or 4),
+            reasoning_effort=reasoning_effort if reasoning_effort in {"auto", "off", "low", "medium", "high"} else "auto",
+            model=str(payload.get("model") or ""),
+        )
+
+    def _persist_manifest_locked(self) -> None:
+        payload = {
+            "version": 1,
+            "files": [
+                {
+                    "id": file.id,
+                    "filename": file.filename,
+                    "created_at": file.created_at,
+                    "updated_at": file.updated_at,
+                }
+                for file in sorted(self._files.values(), key=lambda item: item.created_at)
+            ],
+            "jobs": [
+                {
+                    "id": job.id,
+                    "file_id": job.file_id,
+                    "filename": job.filename,
+                    "options": {
+                        "use_vlm": job.options.use_vlm,
+                        "render_dpi": job.options.render_dpi,
+                        "trim": job.options.trim,
+                        "auto_slice": job.options.auto_slice,
+                        "max_page_workers": job.options.max_page_workers,
+                        "reasoning_effort": job.options.reasoning_effort,
+                        "model": job.options.model,
+                    },
+                    "status": job.status,
+                    "created_at": job.created_at,
+                    "updated_at": job.updated_at,
+                    "error": job.error,
+                    "result_json": job.result_json,
+                    "markdown": job.markdown,
+                    "progress_current": job.progress_current,
+                    "progress_total": job.progress_total,
+                    "progress_percent": job.progress_percent,
+                    "progress_label": job.progress_label,
+                }
+                for job in sorted(self._jobs.values(), key=lambda item: item.created_at)
+            ],
+        }
+        tmp_path = self.manifest_path.with_suffix(".json.tmp")
+        tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp_path.replace(self.manifest_path)
+
+
+def demo_storage_dir() -> Path:
+    configured = os.environ.get(DEMO_STORAGE_DIR_ENV, "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    return ROOT_DIR / ".demo-storage" / "jobs"
+
+
+JOB_STORE = JobStore(demo_storage_dir())
 
 
 def load_demo_config(env_path: str | Path = ".env") -> DemoConfig:
